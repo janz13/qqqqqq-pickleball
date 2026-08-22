@@ -447,7 +447,7 @@ if (typeof window !== 'undefined') {
          matches: state.matches,
          session: state.session
        };
-       await supabase.from('sessions').upsert({
+       const { error } = await supabase.from('sessions').upsert({
          id: state.session!.id,
          join_code: state.session!.joinCode,
          owner_uid: state.session!.ownerUid,
@@ -455,6 +455,11 @@ if (typeof window !== 'undefined') {
          state_json: payload,
          updated_at: new Date().toISOString()
        });
+       
+       if (error) {
+         console.error("Supabase Sync Error:", error);
+         alert(`Cloud Sync Error: ${error.message}\nReal-time updates will not work until this is fixed.`);
+       }
     }, 500);
   });
 }
