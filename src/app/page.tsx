@@ -8,30 +8,28 @@ import Link from 'next/link';
 
 export default function HomePage() {
   const [joinCode, setJoinCode] = useState('');
-  const [authMode, setAuthMode] = useState<'initial' | 'email' | 'otp'>('initial');
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const [authMode, setAuthMode] = useState<'initial' | 'email'>('initial');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [roamingHistory, setRoamingHistory] = useState<any[]>([]);
   
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory } = useStore();
   const supabase = typeof window !== 'undefined' ? (require('@/lib/supabase').createClient()) : null;
 
   useEffect(() => {
-    if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setCurrentUser({
-          email: session.user.email || '',
-          id: session.user.id
+    if (currentUser && supabase) {
+      // Fetch roaming history from the cloud!
+      supabase
+        .from('sessions')
+        .select('*')
+        .eq('owner_uid', currentUser.id)
+        .order('created_at', { ascending: false })
+        .then((res: any) => {
+          if (res.data) setRoamingHistory(res.data);
         });
-        setAuthMode('initial');
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    }
+  }, [currentUser, supabase]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,37 +38,44 @@ export default function HomePage() {
     }
   };
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleCustomLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.includes('@') || password.length < 6) {
-      alert("Please enter a valid email and a password (min 6 characters).");
+    const uname = username.trim().toLowerCase();
+    
+    if (uname.length < 3 || password.length < 4) {
+      alert("Username must be 3+ chars, password 4+ chars.");
       return;
     }
-    
+
     if (supabase) {
-      // Try to sign in
-      let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      // 1. Check if username exists
+      const { data } = await supabase.from('organizers').select('*').eq('username', uname).single();
       
-      // If user doesn't exist or invalid credentials, try to sign up
-      if (error && error.message.includes('Invalid login credentials')) {
-        const signUpRes = await supabase.auth.signUp({ email, password });
-        if (signUpRes.error) {
-          alert(`Error: ${signUpRes.error.message}`);
-          return;
+      if (data) {
+        // User exists, check password
+        if (data.password === password) {
+          setCurrentUser({ email: data.username, id: data.username });
+          setAuthMode('initial');
+        } else {
+          alert("Incorrect password for this username!");
         }
-        alert("Account created! You are now logged in.");
-      } else if (error) {
-        alert(`Error: ${error.message}`);
-        return;
+      } else {
+        // User doesn't exist, create it!
+        const { error } = await supabase.from('organizers').insert([{ username: uname, password }]);
+        if (error) {
+          alert("Error creating account.");
+        } else {
+          alert("Account created successfully!");
+          setCurrentUser({ email: uname, id: uname });
+          setAuthMode('initial');
+        }
       }
     } else {
-      // Local testing mock
-      setCurrentUser({ email, id: email.toLowerCase() });
+      // Offline fallback
+      setCurrentUser({ email: uname, id: uname });
       setAuthMode('initial');
     }
   };
-
-  const myHistory = sessionHistory.filter(h => h.session.ownerUid === currentUser?.id);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 selection:bg-blue-500/30 overflow-hidden relative">
@@ -140,24 +145,24 @@ export default function HomePage() {
           )}
 
           {authMode === 'email' && !currentUser && (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (password.trim().length >= 3) {
-                setCurrentUser({ email: password.trim(), id: password.trim().toLowerCase() });
-                setAuthMode('initial');
-              } else {
-                alert('Please enter a name with at least 3 letters!');
-              }
-            }} className="space-y-6">
+            <form onSubmit={handleCustomLogin} className="space-y-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Organizer Login</h2>
-              <p className="text-sm text-gray-500">Enter your name to log in and start organizing tournaments. No email required!</p>
+              <p className="text-sm text-gray-500">Pick a username and password. If the username is new, we'll create the account instantly!</p>
               
               <div className="space-y-4">
                 <input 
                   type="text" 
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Username (e.g. jsmith)"
+                  required
+                  className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
+                />
+                <input 
+                  type="password" 
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter your name (e.g. John)"
+                  placeholder="Password"
                   required
                   className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
                 />
@@ -168,7 +173,7 @@ export default function HomePage() {
                   type="submit"
                   className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
                 >
-                  Start Organizing
+                  Sign In / Create Account
                 </button>
                 <button 
                   type="button"
@@ -201,26 +206,23 @@ export default function HomePage() {
                 Create New Session
               </Link>
 
-              {myHistory.length > 0 && (
+              {roamingHistory.length > 0 && (
                 <div className="pt-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                      <History size={16} /> My Past Sessions
+                      <History size={16} /> My Cloud Sessions
                     </h3>
-                    <Link href="/leaderboard" className="text-xs font-bold text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
-                      <Trophy size={14} /> Global Leaderboard
-                    </Link>
                   </div>
                   <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-2">
-                    {myHistory.slice().reverse().map(h => (
+                    {roamingHistory.map(session => (
                       <Link 
-                        key={h.session.id} 
-                        href={`/history/${h.session.id}`}
+                        key={session.id} 
+                        href={`/session/${session.join_code}`}
                         className="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 p-4 rounded-xl flex justify-between items-center transition-colors border border-gray-200 dark:border-gray-700"
                       >
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-gray-100">{h.session.name}</p>
-                          <p className="text-xs text-gray-500">{new Date(h.session.createdAtEpochMs).toLocaleDateString()}</p>
+                          <p className="font-bold text-gray-900 dark:text-gray-100">{session.name}</p>
+                          <p className="text-xs text-gray-500">{new Date(session.created_at).toLocaleDateString()}</p>
                         </div>
                         <ChevronRight className="text-gray-400" size={18} />
                       </Link>
