@@ -1,0 +1,1178 @@
+{
+  "totalPlayers": 36,
+  "totalMatches": 96,
+  "metrics": {
+    "ruleViolations": 0,
+    "lockedPairsViolated": 0,
+    "skillGapViolations": 11,
+    "skillGapDetails": [
+      "Match m_2_1: Max 5, Min 3",
+      "Match m_4_0: Max 5, Min 3",
+      "Match m_6_0: Max 5, Min 3",
+      "Match m_8_1: Max 5, Min 3",
+      "Match m_10_1: Max 5, Min 3",
+      "Match m_12_1: Max 5, Min 3",
+      "Match m_14_2: Max 5, Min 3",
+      "Match m_16_3: Max 5, Min 3",
+      "Match m_19_0: Max 5, Min 3",
+      "Match m_21_1: Max 5, Min 3",
+      "Match m_23_2: Max 5, Min 3"
+    ]
+  },
+  "rawMatches": [
+    {
+      "id": "m_1_0",
+      "players": [
+        "L2_11",
+        "L2_4",
+        "L3_5",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_1_1",
+      "players": [
+        "L3_3",
+        "L3_6",
+        "L4_1",
+        "L4_3"
+      ]
+    },
+    {
+      "id": "m_1_2",
+      "players": [
+        "L2_10",
+        "L2_5",
+        "L3_12",
+        "L3_8"
+      ]
+    },
+    {
+      "id": "m_1_3",
+      "players": [
+        "L2_7",
+        "L2_8",
+        "L3_14",
+        "L3_15"
+      ]
+    },
+    {
+      "id": "m_2_0",
+      "players": [
+        "L2_3",
+        "L3_11",
+        "L3_4",
+        "L3_7"
+      ]
+    },
+    {
+      "id": "m_2_1",
+      "players": [
+        "L3_16",
+        "L4_2",
+        "L4_4",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_2_2",
+      "players": [
+        "L2_2",
+        "L2_6",
+        "L3_17",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_2_3",
+      "players": [
+        "L3_1",
+        "L3_10",
+        "L3_13",
+        "L3_2"
+      ]
+    },
+    {
+      "id": "m_3_0",
+      "players": [
+        "L2_1",
+        "L3_3",
+        "L4_1",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_3_1",
+      "players": [
+        "L2_12",
+        "L2_9",
+        "L3_5",
+        "L3_6"
+      ]
+    },
+    {
+      "id": "m_3_2",
+      "players": [
+        "L3_12",
+        "L3_14",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_3_3",
+      "players": [
+        "L2_4",
+        "L2_5",
+        "L2_7",
+        "L2_8"
+      ]
+    },
+    {
+      "id": "m_4_0",
+      "players": [
+        "L3_15",
+        "L4_2",
+        "L4_3",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_4_1",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L3_4",
+        "L3_7"
+      ]
+    },
+    {
+      "id": "m_4_2",
+      "players": [
+        "L3_1",
+        "L3_10",
+        "L3_11",
+        "L3_2"
+      ]
+    },
+    {
+      "id": "m_4_3",
+      "players": [
+        "L3_13",
+        "L3_16",
+        "L3_17",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_5_0",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_6",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_5_1",
+      "players": [
+        "L2_1",
+        "L3_3",
+        "L4_4",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_5_2",
+      "players": [
+        "L2_12",
+        "L2_4",
+        "L3_5",
+        "L3_6"
+      ]
+    },
+    {
+      "id": "m_5_3",
+      "players": [
+        "L3_12",
+        "L3_14",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_6_0",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_6_1",
+      "players": [
+        "L2_5",
+        "L2_7",
+        "L2_8",
+        "L3_7"
+      ]
+    },
+    {
+      "id": "m_6_2",
+      "players": [
+        "L3_1",
+        "L3_10",
+        "L3_11",
+        "L3_2"
+      ]
+    },
+    {
+      "id": "m_6_3",
+      "players": [
+        "L3_13",
+        "L3_15",
+        "L3_16",
+        "L3_17"
+      ]
+    },
+    {
+      "id": "m_7_0",
+      "players": [
+        "L2_1",
+        "L3_18",
+        "L4_3",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_7_1",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_2",
+        "L2_3"
+      ]
+    },
+    {
+      "id": "m_7_2",
+      "players": [
+        "L2_12",
+        "L2_6",
+        "L2_9",
+        "L3_3"
+      ]
+    },
+    {
+      "id": "m_7_3",
+      "players": [
+        "L3_5",
+        "L3_6",
+        "L3_8",
+        "L4_4"
+      ]
+    },
+    {
+      "id": "m_8_0",
+      "players": [
+        "L2_4",
+        "L3_12",
+        "L3_14",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_8_1",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_8_2",
+      "players": [
+        "L3_1",
+        "L3_10",
+        "L3_2",
+        "L3_7"
+      ]
+    },
+    {
+      "id": "m_8_3",
+      "players": [
+        "L3_11",
+        "L3_13",
+        "L3_15",
+        "L3_16"
+      ]
+    },
+    {
+      "id": "m_9_0",
+      "players": [
+        "L2_5",
+        "L2_7",
+        "L3_17",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_9_1",
+      "players": [
+        "L2_1",
+        "L4_3",
+        "L4_4",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_9_2",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_6",
+        "L2_8"
+      ]
+    },
+    {
+      "id": "m_9_3",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_10_0",
+      "players": [
+        "L3_3",
+        "L3_5",
+        "L3_6",
+        "L3_8"
+      ]
+    },
+    {
+      "id": "m_10_1",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_10_2",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_7",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_10_3",
+      "players": [
+        "L3_10",
+        "L3_11",
+        "L3_12",
+        "L3_13"
+      ]
+    },
+    {
+      "id": "m_11_0",
+      "players": [
+        "L3_14",
+        "L3_15",
+        "L3_16",
+        "L3_17"
+      ]
+    },
+    {
+      "id": "m_11_1",
+      "players": [
+        "L2_1",
+        "L3_18",
+        "L4_3",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_11_2",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_11_3",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_12_0",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_3"
+      ]
+    },
+    {
+      "id": "m_12_1",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_4",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_12_2",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_5",
+        "L3_6"
+      ]
+    },
+    {
+      "id": "m_12_3",
+      "players": [
+        "L3_10",
+        "L3_7",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_13_0",
+      "players": [
+        "L3_11",
+        "L3_12",
+        "L4_2",
+        "L4_3"
+      ]
+    },
+    {
+      "id": "m_13_1",
+      "players": [
+        "L3_13",
+        "L3_14",
+        "L3_15",
+        "L3_16"
+      ]
+    },
+    {
+      "id": "m_13_2",
+      "players": [
+        "L2_1",
+        "L3_17",
+        "L3_18",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_13_3",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_14_0",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_14_1",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_3"
+      ]
+    },
+    {
+      "id": "m_14_2",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_4",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_14_3",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_5",
+        "L3_6"
+      ]
+    },
+    {
+      "id": "m_15_0",
+      "players": [
+        "L3_10",
+        "L3_7",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_15_1",
+      "players": [
+        "L3_11",
+        "L3_12",
+        "L4_2",
+        "L4_3"
+      ]
+    },
+    {
+      "id": "m_15_2",
+      "players": [
+        "L3_13",
+        "L3_14",
+        "L3_15",
+        "L3_16"
+      ]
+    },
+    {
+      "id": "m_15_3",
+      "players": [
+        "L2_1",
+        "L3_17",
+        "L3_18",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_16_0",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_16_1",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_16_2",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_3"
+      ]
+    },
+    {
+      "id": "m_16_3",
+      "players": [
+        "L3_4",
+        "L4_1",
+        "L4_4",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_17_0",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_5",
+        "L3_6"
+      ]
+    },
+    {
+      "id": "m_17_1",
+      "players": [
+        "L3_7",
+        "L3_8",
+        "L4_2",
+        "L4_3"
+      ]
+    },
+    {
+      "id": "m_17_2",
+      "players": [
+        "L3_10",
+        "L3_11",
+        "L3_12",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_17_3",
+      "players": [
+        "L3_13",
+        "L3_14",
+        "L3_15",
+        "L3_16"
+      ]
+    },
+    {
+      "id": "m_18_0",
+      "players": [
+        "L2_1",
+        "L3_17",
+        "L4_4",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_18_1",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_18_2",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_18_3",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_19_0",
+      "players": [
+        "L3_3",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_19_1",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_4",
+        "L3_5"
+      ]
+    },
+    {
+      "id": "m_19_2",
+      "players": [
+        "L3_6",
+        "L3_7",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_19_3",
+      "players": [
+        "L3_10",
+        "L3_11",
+        "L3_12",
+        "L3_13"
+      ]
+    },
+    {
+      "id": "m_20_0",
+      "players": [
+        "L3_14",
+        "L3_15",
+        "L4_3",
+        "L4_4"
+      ]
+    },
+    {
+      "id": "m_20_1",
+      "players": [
+        "L2_1",
+        "L3_16",
+        "L3_17",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_20_2",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_20_3",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_21_0",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_21_1",
+      "players": [
+        "L3_3",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_21_2",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_4",
+        "L3_5"
+      ]
+    },
+    {
+      "id": "m_21_3",
+      "players": [
+        "L3_6",
+        "L3_7",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_22_0",
+      "players": [
+        "L3_10",
+        "L3_11",
+        "L3_12",
+        "L3_13"
+      ]
+    },
+    {
+      "id": "m_22_1",
+      "players": [
+        "L3_14",
+        "L3_15",
+        "L4_3",
+        "L4_4"
+      ]
+    },
+    {
+      "id": "m_22_2",
+      "players": [
+        "L2_1",
+        "L3_16",
+        "L3_17",
+        "L5_1"
+      ]
+    },
+    {
+      "id": "m_22_3",
+      "players": [
+        "L2_2",
+        "L2_3",
+        "L2_4",
+        "L2_5"
+      ]
+    },
+    {
+      "id": "m_23_0",
+      "players": [
+        "L2_6",
+        "L2_7",
+        "L2_8",
+        "L2_9"
+      ]
+    },
+    {
+      "id": "m_23_1",
+      "players": [
+        "L2_10",
+        "L2_11",
+        "L2_12",
+        "L3_18"
+      ]
+    },
+    {
+      "id": "m_23_2",
+      "players": [
+        "L3_3",
+        "L4_1",
+        "L4_2",
+        "L5_2"
+      ]
+    },
+    {
+      "id": "m_23_3",
+      "players": [
+        "L3_1",
+        "L3_2",
+        "L3_4",
+        "L3_5"
+      ]
+    },
+    {
+      "id": "m_24_0",
+      "players": [
+        "L3_6",
+        "L3_7",
+        "L3_8",
+        "L3_9"
+      ]
+    },
+    {
+      "id": "m_24_1",
+      "players": [
+        "L3_10",
+        "L3_11",
+        "L4_3",
+        "L4_4"
+      ]
+    },
+    {
+      "id": "m_24_2",
+      "players": [
+        "L3_12",
+        "L3_13",
+        "L3_14",
+        "L3_15"
+      ]
+    },
+    {
+      "id": "m_24_3",
+      "players": [
+        "L2_1",
+        "L3_16",
+        "L3_17",
+        "L5_1"
+      ]
+    }
+  ],
+  "players": [
+    {
+      "id": "L5_1",
+      "name": "Player L5_1 (L5)",
+      "isLatecomer": false,
+      "skill": 5,
+      "games": 11,
+      "locked": "L2_1"
+    },
+    {
+      "id": "L5_2",
+      "name": "Player L5_2 (L5)",
+      "isLatecomer": false,
+      "skill": 5,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L4_1",
+      "name": "Player L4_1 (L4)",
+      "isLatecomer": false,
+      "skill": 4,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L4_2",
+      "name": "Player L4_2 (L4)",
+      "isLatecomer": false,
+      "skill": 4,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L4_3",
+      "name": "Player L4_3 (L4)",
+      "isLatecomer": false,
+      "skill": 4,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L4_4",
+      "name": "Player L4_4 (L4)",
+      "isLatecomer": false,
+      "skill": 4,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_1",
+      "name": "Player L3_1 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": "L3_2"
+    },
+    {
+      "id": "L3_2",
+      "name": "Player L3_2 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": "L3_1"
+    },
+    {
+      "id": "L3_3",
+      "name": "Player L3_3 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_4",
+      "name": "Player L3_4 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_5",
+      "name": "Player L3_5 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_6",
+      "name": "Player L3_6 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_7",
+      "name": "Player L3_7 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_8",
+      "name": "Player L3_8 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_9",
+      "name": "Player L3_9 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_10",
+      "name": "Player L3_10 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_11",
+      "name": "Player L3_11 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_12",
+      "name": "Player L3_12 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_13",
+      "name": "Player L3_13 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_14",
+      "name": "Player L3_14 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_15",
+      "name": "Player L3_15 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_16",
+      "name": "Player L3_16 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_17",
+      "name": "Player L3_17 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 11,
+      "locked": null
+    },
+    {
+      "id": "L3_18",
+      "name": "Player L3_18 (L3)",
+      "isLatecomer": false,
+      "skill": 3,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_1",
+      "name": "Player L2_1 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 11,
+      "locked": "L5_1"
+    },
+    {
+      "id": "L2_2",
+      "name": "Player L2_2 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_3",
+      "name": "Player L2_3 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_4",
+      "name": "Player L2_4 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_5",
+      "name": "Player L2_5 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_6",
+      "name": "Player L2_6 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_7",
+      "name": "Player L2_7 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_8",
+      "name": "Player L2_8 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_9",
+      "name": "Player L2_9 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_10",
+      "name": "Player L2_10 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_11",
+      "name": "Player L2_11 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    },
+    {
+      "id": "L2_12",
+      "name": "Player L2_12 (L2)",
+      "isLatecomer": false,
+      "skill": 2,
+      "games": 10,
+      "locked": null
+    }
+  ]
+}
