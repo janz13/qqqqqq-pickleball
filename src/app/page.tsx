@@ -63,7 +63,7 @@ export default function HomePage() {
         // User doesn't exist, create it!
         const { error } = await supabase.from('organizers').insert([{ username: uname, password }]);
         if (error) {
-          alert("Error creating account.");
+          alert(`Error creating account: ${error.message}`);
         } else {
           alert("Account created successfully!");
           setCurrentUser({ email: uname, id: uname });
