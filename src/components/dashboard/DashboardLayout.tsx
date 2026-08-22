@@ -141,7 +141,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {showQR && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowQR(false)}>
           <div className="w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <QRCodeDisplay onClose={() => setShowQR(false)} />
+            <QRCodeDisplay joinCode={session?.joinCode} onClose={() => setShowQR(false)} />
           </div>
         </div>,
         document.body
