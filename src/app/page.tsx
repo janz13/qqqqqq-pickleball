@@ -11,7 +11,7 @@ export default function HomePage() {
   const [authMode, setAuthMode] = useState<'initial' | 'email' | 'otp'>('initial');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [mockSentOTP, setMockSentOTP] = useState('');
+  const [password, setPassword] = useState('');
   
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory } = useStore();
@@ -40,49 +40,33 @@ export default function HomePage() {
     }
   };
 
-  const handleSendOTP = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.includes('@')) {
-      if (supabase) {
-        const { error } = await supabase.auth.signInWithOtp({ email });
-        if (error) {
-          alert(`Error sending email: ${error.message}`);
+    if (!email.includes('@') || password.length < 6) {
+      alert("Please enter a valid email and a password (min 6 characters).");
+      return;
+    }
+    
+    if (supabase) {
+      // Try to sign in
+      let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      // If user doesn't exist or invalid credentials, try to sign up
+      if (error && error.message.includes('Invalid login credentials')) {
+        const signUpRes = await supabase.auth.signUp({ email, password });
+        if (signUpRes.error) {
+          alert(`Error: ${signUpRes.error.message}`);
           return;
         }
-        setAuthMode('otp');
-      } else {
-        // Fallback for local testing without Supabase
-        const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-        setMockSentOTP(generatedOTP);
-        setAuthMode('otp');
-        alert(`DEVELOPMENT MODE: Your login passcode is ${generatedOTP}`);
-      }
-    }
-  };
-
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (supabase) {
-      const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
-      if (error || !data.user) {
-        alert("Invalid passcode.");
-      } else {
-        setCurrentUser({
-          email: data.user.email || email,
-          id: data.user.id
-        });
-        setAuthMode('initial');
+        alert("Account created! You are now logged in.");
+      } else if (error) {
+        alert(`Error: ${error.message}`);
+        return;
       }
     } else {
-      if (otp === mockSentOTP) {
-        setCurrentUser({
-          email,
-          id: email.toLowerCase()
-        });
-        setAuthMode('initial');
-      } else {
-        alert("Invalid passcode.");
-      }
+      // Local testing mock
+      setCurrentUser({ email, id: email.toLowerCase() });
+      setAuthMode('initial');
     }
   };
 
@@ -156,25 +140,37 @@ export default function HomePage() {
           )}
 
           {authMode === 'email' && !currentUser && (
-            <form onSubmit={handleSendOTP} className="space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign In</h2>
-              <p className="text-sm text-gray-500">Enter your email to receive a login passcode.</p>
+            <form onSubmit={handleSignIn} className="space-y-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign In / Register</h2>
+              <p className="text-sm text-gray-500">Enter your email and a password. If the account doesn't exist, we will create it!</p>
               
-              <input 
-                type="email" 
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                required
-                className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
-              />
+              <div className="space-y-4">
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  required
+                  className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
+                />
+                
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter a password (min 6 chars)"
+                  required
+                  minLength={6}
+                  className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
+                />
+              </div>
               
               <div className="flex flex-col gap-3">
                 <button 
                   type="submit"
                   className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
                 >
-                  Send Passcode
+                  Sign In
                 </button>
                 <button 
                   type="button"
@@ -182,39 +178,6 @@ export default function HomePage() {
                   className="w-full min-h-[44px] text-gray-500 font-semibold text-sm hover:text-gray-700 dark:hover:text-gray-300"
                 >
                   Cancel
-                </button>
-              </div>
-            </form>
-          )}
-
-          {authMode === 'otp' && !currentUser && (
-            <form onSubmit={handleVerifyOTP} className="space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Enter Passcode</h2>
-              <p className="text-sm text-gray-500">We sent a passcode to {email}. (Check alert!)</p>
-              
-              <input 
-                type="text" 
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                placeholder="123456"
-                required
-                maxLength={6}
-                className="w-full px-6 min-h-[64px] text-3xl font-mono tracking-[0.5em] text-center font-bold rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
-              />
-              
-              <div className="flex flex-col gap-3">
-                <button 
-                  type="submit"
-                  className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
-                >
-                  Login
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setAuthMode('email')}
-                  className="w-full min-h-[44px] text-gray-500 font-semibold text-sm hover:text-gray-700 dark:hover:text-gray-300"
-                >
-                  Back
                 </button>
               </div>
             </form>
