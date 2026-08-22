@@ -142,22 +142,22 @@ export default function HomePage() {
           {authMode === 'email' && !currentUser && (
             <form onSubmit={(e) => {
               e.preventDefault();
-              if (password === 'PICKLE2026') {
-                setCurrentUser({ email: 'Organizer', id: 'admin' });
+              if (password.trim().length >= 3) {
+                setCurrentUser({ email: password.trim(), id: password.trim().toLowerCase() });
                 setAuthMode('initial');
               } else {
-                alert('Incorrect master passcode!');
+                alert('Please enter a name with at least 3 letters!');
               }
             }} className="space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Organizer Access</h2>
-              <p className="text-sm text-gray-500">Enter the Master Passcode to unlock the tournament dashboard.</p>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Organizer Login</h2>
+              <p className="text-sm text-gray-500">Enter your name to log in and start organizing tournaments. No email required!</p>
               
               <div className="space-y-4">
                 <input 
-                  type="password" 
+                  type="text" 
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter Master Passcode"
+                  placeholder="Enter your name (e.g. John)"
                   required
                   className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
                 />
@@ -168,7 +168,7 @@ export default function HomePage() {
                   type="submit"
                   className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
                 >
-                  Unlock Dashboard
+                  Start Organizing
                 </button>
                 <button 
                   type="button"
