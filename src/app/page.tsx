@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Play, Users, Shuffle, Trophy, ArrowRight, LayoutGrid, Mail, LogOut, History, ChevronRight } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -16,6 +16,22 @@ export default function HomePage() {
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory } = useStore();
   const supabase = typeof window !== 'undefined' ? (require('@/lib/supabase').createClient()) : null;
+
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setCurrentUser({
+          email: session.user.email || '',
+          id: session.user.id
+        });
+        setAuthMode('initial');
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
