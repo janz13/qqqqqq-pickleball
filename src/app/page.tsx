@@ -15,6 +15,7 @@ export default function HomePage() {
   
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory } = useStore();
+  const supabase = typeof window !== 'undefined' ? (require('@/lib/supabase').createClient()) : null;
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,26 +24,49 @@ export default function HomePage() {
     }
   };
 
-  const handleSendOTP = (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email.includes('@')) {
-      const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-      setMockSentOTP(generatedOTP);
-      setAuthMode('otp');
-      alert(`DEVELOPMENT MODE: Your login passcode is ${generatedOTP}`);
+      if (supabase) {
+        const { error } = await supabase.auth.signInWithOtp({ email });
+        if (error) {
+          alert(`Error sending email: ${error.message}`);
+          return;
+        }
+        setAuthMode('otp');
+      } else {
+        // Fallback for local testing without Supabase
+        const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
+        setMockSentOTP(generatedOTP);
+        setAuthMode('otp');
+        alert(`DEVELOPMENT MODE: Your login passcode is ${generatedOTP}`);
+      }
     }
   };
 
-  const handleVerifyOTP = (e: React.FormEvent) => {
+  const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp === mockSentOTP) {
-      setCurrentUser({
-        email,
-        id: email.toLowerCase()
-      });
-      setAuthMode('initial');
+    if (supabase) {
+      const { data, error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' });
+      if (error || !data.user) {
+        alert("Invalid passcode.");
+      } else {
+        setCurrentUser({
+          email: data.user.email || email,
+          id: data.user.id
+        });
+        setAuthMode('initial');
+      }
     } else {
-      alert("Invalid passcode.");
+      if (otp === mockSentOTP) {
+        setCurrentUser({
+          email,
+          id: email.toLowerCase()
+        });
+        setAuthMode('initial');
+      } else {
+        alert("Invalid passcode.");
+      }
     }
   };
 
