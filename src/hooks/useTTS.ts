@@ -59,11 +59,12 @@ export function useTTS() {
   const speak = useCallback((text: string, force = false) => {
     if (!isEnabled && !force) return;
     queue.current.push({ text, force });
-    processQueue();
-  }, [isEnabled, processQueue]);
+    processQueueRef.current();
+  }, [isEnabled]);
 
-  const announceCourtAssignment = useCallback((courtLabel: string, teamA: string[], teamB: string[]) => {
-    speak(`${courtLabel}: ${teamA.join(' and ')} versus ${teamB.join(' and ')}. Please head to ${courtLabel}.`);
+  const announceCourtAssignment = useCallback((courtLabel: string, teamA: string[], teamB: string[], force = false) => {
+    const text = `${courtLabel}: ${teamA.join(' and ')} versus ${teamB.join(' and ')}. Please head to ${courtLabel}.`;
+    speak(text, force);
   }, [speak]);
 
   const announceCourtOpen = useCallback((courtLabel: string) => {

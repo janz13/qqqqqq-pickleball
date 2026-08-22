@@ -182,15 +182,15 @@ export default function PlayerMonitorPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 relative">
       <header className="glass-dark sticky top-0 z-10 px-4 py-4 border-b border-white/10 rounded-none mb-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight">{session.name}</h1>
-            <p className="text-emerald-400 font-mono text-sm tracking-widest uppercase flex items-center gap-2">
+        <div className="max-w-7xl mx-auto flex justify-between items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-black tracking-tight break-words">{session.name}</h1>
+            <p className="text-emerald-400 font-mono text-sm tracking-widest uppercase flex items-center gap-2 mt-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Live Status
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="bg-slate-800/80 px-4 py-2 rounded-xl flex items-center gap-2 border border-slate-700">
               <LayoutGrid size={16} className="text-blue-400" />
               <span className="font-bold">{activeCourts}/{courts.length} Active</span>

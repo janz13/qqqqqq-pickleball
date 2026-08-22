@@ -55,9 +55,18 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
           <h3 className="font-bold tracking-tight text-lg">{court.label}</h3>
         </div>
         {court.status === CourtStatus.IN_PROGRESS && (
-          <div className="flex items-center gap-1.5 font-mono text-lg font-semibold bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm text-white">
-            <Clock size={16} />
-            <span>{elapsed}</span>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => tts.announceCourtAssignment(court.label, teamA.map(p => p.name), teamB.map(p => p.name), true)}
+              className="p-1.5 bg-black/20 hover:bg-black/40 rounded-full transition-colors text-white backdrop-blur-sm"
+              title="Announce match"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
+            </button>
+            <div className="flex items-center gap-1.5 font-mono text-lg font-semibold bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm text-white">
+              <Clock size={16} />
+              <span>{elapsed}</span>
+            </div>
           </div>
         )}
       </div>

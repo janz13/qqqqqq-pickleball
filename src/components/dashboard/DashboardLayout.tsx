@@ -45,11 +45,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 glass dark:glass-dark m-4 mr-0 rounded-2xl overflow-hidden z-10 animate-fade-in">
         <div className="p-6 border-b border-slate-200/50 dark:border-slate-700/50">
-          <div className="flex justify-between items-center mb-3">
-            <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 break-words">
+          <div className="flex justify-between items-start gap-2 mb-3">
+            <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 break-words flex-1 min-w-0">
               {session?.name || 'Pickleball Session'}
             </h1>
-            <ThemeToggle />
+            <div className="shrink-0 pt-1">
+              <ThemeToggle />
+            </div>
           </div>
           {session?.joinCode && (
             <div className="flex flex-col gap-2">
@@ -103,11 +105,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden animate-fade-in z-0 relative">
         {/* Mobile Header */}
-        <div className="md:hidden p-4 flex justify-between items-center bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
-          <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 break-words pr-2">
+        <div className="md:hidden p-4 flex justify-between items-start gap-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
+          <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 break-words flex-1 min-w-0">
             {session?.name || 'Pickleball Session'}
           </h1>
-          <ThemeToggle />
+          <div className="shrink-0 pt-1">
+            <ThemeToggle />
+          </div>
         </div>
         
         <div className="max-w-7xl w-full mx-auto p-4 md:p-8 pb-24 md:pb-0">
