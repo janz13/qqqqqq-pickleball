@@ -140,27 +140,25 @@ export default function HomePage() {
           )}
 
           {authMode === 'email' && !currentUser && (
-            <form onSubmit={handleSignIn} className="space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign In / Register</h2>
-              <p className="text-sm text-gray-500">Enter your email and a password. If the account doesn't exist, we will create it!</p>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (password === 'PICKLE2026') {
+                setCurrentUser({ email: 'Organizer', id: 'admin' });
+                setAuthMode('initial');
+              } else {
+                alert('Incorrect master passcode!');
+              }
+            }} className="space-y-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Organizer Access</h2>
+              <p className="text-sm text-gray-500">Enter the Master Passcode to unlock the tournament dashboard.</p>
               
               <div className="space-y-4">
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  required
-                  className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
-                />
-                
                 <input 
                   type="password" 
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter a password (min 6 chars)"
+                  placeholder="Enter Master Passcode"
                   required
-                  minLength={6}
                   className="w-full px-6 min-h-[64px] text-lg font-medium rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-gray-900 dark:text-gray-100"
                 />
               </div>
@@ -170,7 +168,7 @@ export default function HomePage() {
                   type="submit"
                   className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-md"
                 >
-                  Sign In
+                  Unlock Dashboard
                 </button>
                 <button 
                   type="button"
