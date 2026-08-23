@@ -109,11 +109,14 @@ export default function PlayerMonitorPage() {
 
   // Redirect on end session
   useEffect(() => {
-    // Check if the current session ended (it would be moved to history)
+    // Check if this exact session (by join code) ended and is in local history
     const endedSession = useStore.getState().sessionHistory.find(h => h.session.joinCode === code);
     if (endedSession) {
       router.push(`/history/${endedSession.session.id}?playerView=true`);
-    } else if (session && !session.isActive) {
+      return;
+    }
+    // Only redirect if the session in the store is for THIS join code and it ended
+    if (session && !session.isActive && session.joinCode === code) {
       router.push(`/history/${session.id}?playerView=true`);
     }
   }, [session, router, code]);
