@@ -7,6 +7,8 @@ import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
 import { Users, LayoutGrid, Bell, CheckCircle, Megaphone } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
+import { buildNextBatches } from '@/engine/queue-engine';
+import { pairFour } from '@/engine/pairing-engine';
 
 export default function PlayerMonitorPage() {
   const { code } = useParams();
@@ -19,29 +21,37 @@ export default function PlayerMonitorPage() {
   
   const lastMatchId = useRef<string | null>(null);
 
-  // Cloud Sync & Cross-tab synchronization
+  // Cloud Sync for Player View
   useEffect(() => {
     let channel: any = null;
-    const handleStorageChange = () => {
-      useStore.persist.rehydrate();
-    };
+    let isMounted = true;
     
     const initRealtime = async () => {
        const { createClient } = await import('@/lib/supabase');
        const supabase = createClient();
        
        if (supabase) {
-         // Subscribe to Postgres changes on the sessions table for this specific join_code
-         channel = supabase.channel(`public:sessions:join_code=eq.${code}`)
+         // Initial fetch
+         const { data } = await supabase.from('sessions').select('state_json, is_active').eq('join_code', code).single();
+         if (data && data.state_json && isMounted) {
+            useStore.setState({
+               session: data.state_json.session,
+               players: data.state_json.players,
+               courts: data.state_json.courts,
+               matches: data.state_json.matches
+            });
+         }
+         
+         // Subscribe to changes
+         channel = supabase.channel(`player-view-${code}`)
            .on('postgres_changes', { 
              event: '*', 
              schema: 'public', 
              table: 'sessions', 
              filter: `join_code=eq.${code}` 
-           }, (payload) => {
+           }, (payload: any) => {
              const newData = payload.new as any;
-             if (newData && newData.state_json) {
-               // Hydrate the store with the cloud state
+             if (newData && newData.state_json && isMounted) {
                useStore.setState({
                  session: newData.state_json.session,
                  players: newData.state_json.players,
@@ -51,28 +61,31 @@ export default function PlayerMonitorPage() {
              }
            })
            .subscribe();
-           
-         // Initial fetch just in case they loaded before the first broadcast
-         const { data } = await supabase.from('sessions').select('state_json').eq('join_code', code).single();
-         if (data && data.state_json) {
-            useStore.setState({
-               session: data.state_json.session,
-               players: data.state_json.players,
-               courts: data.state_json.courts,
-               matches: data.state_json.matches
-            });
-         }
-       } else {
-         // Fallback to local cross-tab if Supabase isn't configured
-         window.addEventListener('storage', handleStorageChange);
+
+         // Polling fallback every 5 seconds in case realtime misses an update
+         const pollInterval = setInterval(async () => {
+           if (!isMounted) return;
+           const { data: pollData } = await supabase.from('sessions').select('state_json').eq('join_code', code).single();
+           if (pollData && pollData.state_json && isMounted) {
+              useStore.setState({
+                session: pollData.state_json.session,
+                players: pollData.state_json.players,
+                courts: pollData.state_json.courts,
+                matches: pollData.state_json.matches
+              });
+           }
+         }, 5000);
+         
+         return () => clearInterval(pollInterval);
        }
     };
     
-    initRealtime();
+    const cleanup = initRealtime();
 
     return () => {
-       window.removeEventListener('storage', handleStorageChange);
+       isMounted = false;
        if (channel) channel.unsubscribe();
+       cleanup?.then(fn => fn?.());
     };
   }, [code]);
 
@@ -200,6 +213,12 @@ export default function PlayerMonitorPage() {
       return a.queuedAtEpochMs - b.queuedAtEpochMs;
     });
 
+  // Calculate upcoming batches for player view
+  const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
+  const upcomingBatches = openCourtsCount > 0 
+    ? buildNextBatches(players, openCourtsCount).map(b => pairFour(b))
+    : [];
+
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
 
   return (
@@ -273,6 +292,40 @@ export default function PlayerMonitorPage() {
             )}
           </div>
         </div>
+
+        {/* Next Up Section */}
+        {upcomingBatches.length > 0 && (
+          <div className="lg:col-span-3 space-y-4 mt-4">
+            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
+              <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>
+              Next Up
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {upcomingBatches.map((batch, idx) => (
+                <div key={idx} className="glass-dark rounded-2xl p-4 border border-white/5">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Match {idx + 1}</div>
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-1">
+                      {batch.teamA.map(p => (
+                        <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-blue-400' : ''}`}>
+                          {p.name}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-center text-xs font-bold text-slate-500">VS</div>
+                    <div className="flex flex-col gap-1">
+                      {batch.teamB.map(p => (
+                        <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-rose-400' : ''}`}>
+                          {p.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Identity Selection Modal */}

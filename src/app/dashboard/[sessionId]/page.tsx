@@ -7,6 +7,7 @@ import { CourtStatus, Session } from '@/types/models';
 import CourtsPanel from '@/components/dashboard/CourtsPanel';
 import RosterPanel from '@/components/dashboard/RosterPanel';
 import LeaderboardPanel from '@/components/dashboard/LeaderboardPanel';
+import MatchHistoryPanel from '@/components/dashboard/MatchHistoryPanel';
 import TTSSettingsPanel from '@/components/dashboard/TTSSettingsPanel';
 import AnnouncementPanel from '@/components/dashboard/AnnouncementPanel';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
@@ -51,6 +52,7 @@ export default function DashboardPage() {
           {activeTab === 'courts' && <CourtsPanel />}
           {activeTab === 'roster' && <RosterPanel />}
           {activeTab === 'leaderboard' && <LeaderboardPanel />}
+          {activeTab === 'history' && <MatchHistoryPanel />}
           {activeTab === 'announcements' && <AnnouncementPanel />}
           {activeTab === 'settings' && <TTSSettingsPanel />}
         </div>

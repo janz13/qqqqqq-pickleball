@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
-import { LayoutDashboard, Users, Trophy, Settings, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Users, Trophy, Settings, Megaphone, ClipboardList } from 'lucide-react';
 import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
-type Tab = 'courts' | 'roster' | 'leaderboard' | 'announcements' | 'settings';
+type Tab = 'courts' | 'roster' | 'leaderboard' | 'history' | 'announcements' | 'settings';
 
 interface DashboardLayoutProps {
   children: (activeTab: Tab) => React.ReactNode;
@@ -36,6 +36,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { id: 'courts', label: 'Courts', icon: LayoutDashboard },
     { id: 'roster', label: 'Roster', icon: Users },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
+    { id: 'history', label: 'History', icon: ClipboardList },
     { id: 'announcements', label: 'Announce', icon: Megaphone },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] as const;
@@ -105,13 +106,31 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden animate-fade-in z-0 relative">
         {/* Mobile Header */}
-        <div className="md:hidden p-4 flex justify-between items-start gap-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
-          <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 break-words flex-1 min-w-0">
-            {session?.name || 'Pickleball Session'}
-          </h1>
-          <div className="shrink-0 pt-1">
-            <ThemeToggle />
+        <div className="md:hidden p-4 flex flex-col gap-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
+          <div className="flex justify-between items-start gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 break-words flex-1 min-w-0">
+              {session?.name || 'Pickleball Session'}
+            </h1>
+            <div className="shrink-0 pt-1">
+              <ThemeToggle />
+            </div>
           </div>
+          {session?.joinCode && (
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowQR(true)}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-700 dark:text-blue-300 rounded-xl text-sm font-bold transition-all border border-blue-500/20"
+              >
+                Code: <span className="tracking-widest font-mono text-base">{session.joinCode}</span>
+              </button>
+              <button 
+                onClick={() => window.open(`/session/${session.joinCode}`, '_blank')}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Player View
+              </button>
+            </div>
+          )}
         </div>
         
         <div className="max-w-7xl w-full mx-auto p-4 md:p-8 pb-24 md:pb-0">

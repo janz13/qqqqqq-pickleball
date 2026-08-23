@@ -46,6 +46,7 @@ interface StoreState {
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number) => Session;
   swapPlayerInMatch: (matchId: string, team: Team, oldPlayerId: string, newPlayerId: string) => void;
+  reverseMatchWinner: (matchId: string) => void;
   
   getUpcomingBatches: () => ProposedMatch[];
   broadcastAnnouncement: (text: string) => void;
@@ -487,6 +488,73 @@ export const useStore = create<StoreState>()(
         });
         
         return { matches: newMatches, players: newPlayers };
+      }),
+
+      reverseMatchWinner: (matchId: string) => set((state) => {
+        const match = state.matches.find(m => m.id === matchId);
+        if (!match || !match.winner) return state;
+
+        const oldWinner = match.winner;
+        const newWinner = oldWinner === Team.A ? Team.B : Team.A;
+
+        const newMatches = state.matches.map(m => 
+          m.id === matchId 
+            ? { ...m, winner: newWinner } 
+            : m
+        );
+
+        const matchPlayers = new Set([...match.teamA, ...match.teamB]);
+
+        const newPlayers = state.players.map(p => {
+          if (matchPlayers.has(p.id)) {
+            const wasOnOldWinningTeam = (match.teamA.includes(p.id) && oldWinner === Team.A) ||
+                                       (match.teamB.includes(p.id) && oldWinner === Team.B);
+
+            const winDelta = wasOnOldWinningTeam ? -1 : 1;
+            const lossDelta = wasOnOldWinningTeam ? 1 : -1;
+
+            return {
+              ...p,
+              sessionWins: Math.max(0, p.sessionWins + winDelta),
+              allTimeWins: Math.max(0, p.allTimeWins + winDelta),
+              sessionLosses: Math.max(0, p.sessionLosses + lossDelta),
+              allTimeLosses: Math.max(0, p.allTimeLosses + lossDelta),
+            };
+          }
+          return p;
+        });
+
+        // Update roster with new all-time stats
+        const newRoster = [...state.roster];
+        newPlayers.forEach(p => {
+          if (matchPlayers.has(p.id)) {
+            const rosterIdx = newRoster.findIndex(r => r.name.toLowerCase() === p.name.toLowerCase());
+            if (rosterIdx >= 0) {
+              newRoster[rosterIdx] = { 
+                ...newRoster[rosterIdx], 
+                allTimeWins: p.allTimeWins,
+                allTimeLosses: p.allTimeLosses
+              };
+            } else {
+              newRoster.push(p);
+            }
+          }
+        });
+
+        const updates: Partial<StoreState> = {
+          matches: newMatches,
+          players: newPlayers,
+          roster: newRoster
+        };
+
+        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+          updates.rostersByOwner = {
+            ...(state.rostersByOwner || {}),
+            [state.currentUser.id]: newRoster
+          };
+        }
+
+        return updates;
       }),
 
       getUpcomingBatches: () => {
