@@ -346,27 +346,50 @@ export const useStore = create<StoreState>()(
         players: state.players.map(p => p.id === playerId ? { ...p, skillLevel } : p)
       })),
 
-      endSession: () => set((state) => {
-        if (!state.session) return state;
-        const historyItem = {
-          session: state.session,
-          players: state.players,
-          courts: state.courts,
-          matches: state.matches,
-          endedAtEpochMs: Date.now()
-        };
-        // Keep only the last 3 sessions in history to prevent LocalStorage QuotaExceededError
-        const newHistory = [...state.sessionHistory, historyItem].slice(-3);
-        return {
-          sessionHistory: newHistory,
-          session: null,
-          sessionId: null,
-          joinCode: null,
-          players: [],
-          courts: [],
-          matches: []
-        };
-      }),
+      endSession: () => {
+        const state = get();
+        if (!state.session) return;
+
+        // Force an immediate cloud update to broadcast that the session has ended
+        if (typeof window !== 'undefined' && state.currentUser) {
+          const supabase = require('./supabase').createClient();
+          if (supabase) {
+             const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
+             const finalState = {
+               players: sanitizePlayers(state.players),
+               courts: state.courts,
+               matches: state.matches,
+               session: { ...state.session, isActive: false }
+             };
+             // Fire and forget
+             supabase.from('sessions').update({ 
+               is_active: false,
+               state_json: finalState
+             }).eq('id', state.session.id).then();
+          }
+        }
+
+        set((state) => {
+          if (!state.session) return state;
+          const historyItem = {
+            session: state.session,
+            players: state.players,
+            courts: state.courts,
+            matches: state.matches,
+            endedAtEpochMs: Date.now()
+          };
+          const newHistory = [...state.sessionHistory, historyItem].slice(-3);
+          return {
+            sessionHistory: newHistory,
+            session: null,
+            sessionId: null,
+            joinCode: null,
+            players: [],
+            courts: [],
+            matches: []
+          };
+        });
+      },
 
       clearHistory: () => set({ sessionHistory: [] }),
 
