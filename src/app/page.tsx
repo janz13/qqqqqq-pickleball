@@ -134,12 +134,6 @@ export default function HomePage() {
                   Login to Organize
                 </button>
                 
-                <Link 
-                  href="/dashboard/new"
-                  className="w-full min-h-[54px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm"
-                >
-                  Organize as Guest
-                </Link>
               </div>
             </>
           )}
