@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTTS } from '@/hooks/useTTS';
+import { useStore } from '@/lib/store';
 import { Megaphone, Play } from 'lucide-react';
 
 export default function AnnouncementPanel() {

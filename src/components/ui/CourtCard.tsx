@@ -193,7 +193,8 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
                   <button 
                     key={p.id}
                     onClick={() => {
-                      swapPlayerInMatch(match.id, swappingPlayerId, p.id);
+                      const team = match.teamA.includes(swappingPlayerId) ? Team.A : Team.B;
+                      swapPlayerInMatch(match.id, team, swappingPlayerId, p.id);
                       setSwappingPlayerId(null);
                     }}
                     className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/40 transition-colors border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
