@@ -155,10 +155,12 @@ export default function PlayerMonitorPage() {
   }, [matches, selectedPlayerId, session, players, courts]);
 
   const [activeAnnouncement, setActiveAnnouncement] = useState<{ text: string, ts: number } | null>(null);
+  const seenAnnouncementTs = useRef<number | null>(null);
 
   useEffect(() => {
     if (session?.currentAnnouncement && session.announcementTimestamp) {
-      if (!activeAnnouncement || activeAnnouncement.ts !== session.announcementTimestamp) {
+      if (session.announcementTimestamp !== seenAnnouncementTs.current) {
+        seenAnnouncementTs.current = session.announcementTimestamp;
         setActiveAnnouncement({ text: session.currentAnnouncement, ts: session.announcementTimestamp });
         
         // Auto-dismiss after 10 seconds
@@ -166,7 +168,7 @@ export default function PlayerMonitorPage() {
         return () => clearTimeout(t);
       }
     }
-  }, [session?.currentAnnouncement, session?.announcementTimestamp, activeAnnouncement]);
+  }, [session?.currentAnnouncement, session?.announcementTimestamp]);
 
   const endedSession = useStore.getState().sessionHistory.find(h => h.session.joinCode === code);
 
