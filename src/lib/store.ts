@@ -27,6 +27,7 @@ interface StoreState {
   removePlayer: (id: string) => void;
   
   saveToRoster: (player: Player) => void;
+  clearRoster: () => void;
   
   addCourt: (court: Court) => void;
   updateCourt: (court: Court) => void;
@@ -132,6 +133,7 @@ export const useStore = create<StoreState>()(
         }
         return { roster: [...state.roster, player] };
       }),
+      clearRoster: () => set({ roster: [] }),
       
       addCourt: (court) => set((state) => {
         const maxCourtNum = state.courts.reduce((max, c) => {

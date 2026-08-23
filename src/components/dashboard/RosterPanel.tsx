@@ -12,7 +12,7 @@ import { Plus, Search, Upload, Download, FileUp } from 'lucide-react';
  
 
 export default function RosterPanel() {
-  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, setLockedPartner, unlockPartner } = useStore();
+  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, setLockedPartner, unlockPartner, clearRoster } = useStore();
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerSkill, setNewPlayerSkill] = useState(3);
   const [checkInNow, setCheckInNow] = useState(true);
@@ -240,7 +240,15 @@ export default function RosterPanel() {
             
             {roster.length > 0 && (
                 <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-6 rounded-2xl flex flex-col gap-4">
-                  <h2 className="text-lg font-bold tracking-tight">Load from Roster</h2>
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold tracking-tight">Load from Roster</h2>
+                    <button 
+                      onClick={() => confirm('Clear all saved players from this device?') && clearRoster()} 
+                      className="text-xs text-red-500 hover:text-red-600 font-semibold transition-colors"
+                    >
+                      Clear Device Roster
+                    </button>
+                  </div>
                   <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
                       {roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).map(saved => (
                           <div key={saved.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2 rounded-lg">
