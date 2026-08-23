@@ -153,9 +153,22 @@ export const useStore = create<StoreState>()(
       
       saveToRoster: (player) => set((state) => {
         const existing = state.roster.find(p => p.name.toLowerCase() === player.name.toLowerCase());
-        const newRoster = existing
-          ? state.roster.map(p => p.id === existing.id ? { ...p, ...player } : p)
-          : [...state.roster, player];
+        let newRoster: Player[];
+        
+        if (existing) {
+          // If the player exists, we merge, BUT we MUST preserve all-time stats!
+          // Quick Add passes a new player object with 0s for all-time stats.
+          newRoster = state.roster.map(p => p.id === existing.id ? { 
+            ...player, // Take new properties (like skill level update)
+            id: p.id,  // Keep original ID
+            allTimeWins: Math.max(p.allTimeWins, player.allTimeWins),
+            allTimeLosses: Math.max(p.allTimeLosses, player.allTimeLosses),
+            allTimeGamesPlayed: Math.max(p.allTimeGamesPlayed, player.allTimeGamesPlayed),
+            allTimeSessionsPlayed: Math.max(p.allTimeSessionsPlayed, player.allTimeSessionsPlayed)
+          } : p);
+        } else {
+          newRoster = [...state.roster, player];
+        }
         
         if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
           return { 
@@ -273,7 +286,21 @@ export const useStore = create<StoreState>()(
            }
         });
 
-        return { matches: newMatches, players: updatedPlayersWithSitouts, courts: newCourts, roster: newRoster };
+        const updates: Partial<StoreState> = { 
+          matches: newMatches, 
+          players: updatedPlayersWithSitouts, 
+          courts: newCourts, 
+          roster: newRoster 
+        };
+
+        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+          updates.rostersByOwner = {
+            ...(state.rostersByOwner || {}),
+            [state.currentUser.id]: newRoster
+          };
+        }
+
+        return updates;
       }),
 
       startBatch: (batch, courtId) => set((state) => {
