@@ -16,6 +16,7 @@ interface StoreState {
   session: Session | null;
   
   roster: Player[];
+  rostersByOwner: Record<string, Player[]>;
   
   setSession: (session: Session | null) => void;
   setPlayers: (players: Player[]) => void;
@@ -60,7 +61,30 @@ export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      setCurrentUser: (user) => set({ currentUser: user }),
+      setCurrentUser: (user) => set(state => {
+        const newRosters = { ...(state.rostersByOwner || {}) };
+        
+        // Save current roster to the outgoing user
+        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+          newRosters[state.currentUser.id] = state.roster;
+        } else if (state.roster.length > 0 && !state.currentUser) {
+          // Migration: if they had a roster before this feature, and log in, keep it for them
+          if (user && !user.id.startsWith('guest_')) {
+             newRosters[user.id] = state.roster;
+          }
+        }
+
+        let nextRoster: Player[] = [];
+        if (user && !user.id.startsWith('guest_')) {
+           nextRoster = newRosters[user.id] || (state.roster.length > 0 && !state.currentUser ? state.roster : []);
+        }
+
+        return { 
+          currentUser: user,
+          rostersByOwner: newRosters,
+          roster: nextRoster
+        };
+      }),
 
       sessionId: null,
       joinCode: null,
@@ -70,6 +94,7 @@ export const useStore = create<StoreState>()(
       session: null,
       sessionHistory: [],
       roster: [],
+      rostersByOwner: {},
       
       ttsEnabled: false,
       ttsVoice: null,
@@ -128,12 +153,24 @@ export const useStore = create<StoreState>()(
       
       saveToRoster: (player) => set((state) => {
         const existing = state.roster.find(p => p.name.toLowerCase() === player.name.toLowerCase());
-        if (existing) {
-          return { roster: state.roster.map(p => p.id === existing.id ? { ...p, ...player } : p) };
+        const newRoster = existing
+          ? state.roster.map(p => p.id === existing.id ? { ...p, ...player } : p)
+          : [...state.roster, player];
+        
+        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+          return { 
+            roster: newRoster, 
+            rostersByOwner: { ...(state.rostersByOwner || {}), [state.currentUser.id]: newRoster } 
+          };
         }
-        return { roster: [...state.roster, player] };
+        return { roster: newRoster };
       }),
-      clearRoster: () => set({ roster: [] }),
+      clearRoster: () => set((state) => {
+        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+          return { roster: [], rostersByOwner: { ...(state.rostersByOwner || {}), [state.currentUser.id]: [] } };
+        }
+        return { roster: [] };
+      }),
       
       addCourt: (court) => set((state) => {
         const maxCourtNum = state.courts.reduce((max, c) => {
