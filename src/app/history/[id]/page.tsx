@@ -18,11 +18,40 @@ export default function HistoryPage() {
   const [congratsRank, setCongratsRank] = useState<number | null>(null);
   const router = useRouter();
 
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
-    const item = sessionHistory.find(h => h.session.id === id);
-    if (item) {
-      setTimeout(() => setHistoryItem(item), 0);
-    }
+    const fetchHistory = async () => {
+      const item = sessionHistory.find(h => h.session.id === id);
+      if (item) {
+        setHistoryItem(item);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Fallback: Fetch from cloud if not in local history
+      try {
+        const { createClient } = require('@/lib/supabase');
+        const supabase = createClient();
+        const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
+        if (data && data.state_json) {
+           setHistoryItem({
+             session: data.state_json.session,
+             players: data.state_json.players,
+             courts: data.state_json.courts,
+             matches: data.state_json.matches,
+             endedAtEpochMs: Date.now() // Approximation if missing
+           });
+        } else {
+           console.error("Cloud fetch failed:", error);
+        }
+      } catch(e) {
+        console.error("Error fetching history from cloud", e);
+      }
+      setIsLoading(false);
+    };
+    
+    fetchHistory();
   }, [id, sessionHistory]);
 
   useEffect(() => {
@@ -42,12 +71,26 @@ export default function HistoryPage() {
     }
   }, [historyItem, id, isPlayerView]);
 
-  if (!historyItem) {
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-bold mb-4">Session Not Found</h2>
-          <button onClick={() => router.push('/')} className="px-4 py-2 bg-blue-500 text-white rounded-lg">Go Home</button>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!historyItem) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trophy className="text-gray-400" size={32} />
+          </div>
+          <h2 className="text-2xl font-black mb-2 text-gray-900 dark:text-white">Session Not Found</h2>
+          <p className="text-gray-500 mb-6 max-w-sm mx-auto">This session may have been deleted or is no longer available.</p>
+          <button onClick={() => router.push('/')} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mx-auto">
+            <ArrowLeft size={18} /> Go Home
+          </button>
         </div>
       </div>
     );
