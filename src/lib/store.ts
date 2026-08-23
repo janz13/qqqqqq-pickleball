@@ -43,9 +43,10 @@ interface StoreState {
   endSession: () => void;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number) => Session;
-  swapPlayerInMatch: (matchId: string, oldPlayerId: string, newPlayerId: string) => void;
+  swapPlayerInMatch: (matchId: string, team: Team, oldPlayerId: string, newPlayerId: string) => void;
   
   getUpcomingBatches: () => ProposedMatch[];
+  broadcastAnnouncement: (text: string) => void;
   ttsEnabled: boolean;
   ttsVoice: string | null;
   ttsRate: number;
@@ -401,7 +402,18 @@ export const useStore = create<StoreState>()(
 
         const batches = buildNextBatches(state.players, openCourts);
         return batches.map(b => pairFour(b));
-      }
+      },
+
+      broadcastAnnouncement: (text: string) => set((state) => {
+        if (!state.session) return state;
+        return {
+          session: {
+            ...state.session,
+            currentAnnouncement: text,
+            announcementTimestamp: Date.now()
+          }
+        };
+      })
     }),
     {
       name: 'pickleball-storage',

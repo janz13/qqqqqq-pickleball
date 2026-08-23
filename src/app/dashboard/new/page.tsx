@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, Play } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -9,7 +9,11 @@ export default function NewSessionPage() {
   const router = useRouter();
   const [name, setName] = useState('Weekend Open Play');
   const [courtsCount, setCourtsCount] = useState(4);
-  const { initializeSession } = useStore();
+  const { initializeSession, currentUser } = useStore();
+
+  useEffect(() => {
+    if (!currentUser) router.push('/');
+  }, [currentUser, router]);
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();

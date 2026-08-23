@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store';
 import { CourtStatus, PlayerStatus } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
-import { Users, LayoutGrid, Bell, CheckCircle } from 'lucide-react';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 
 export default function PlayerMonitorPage() {
@@ -92,7 +92,7 @@ export default function PlayerMonitorPage() {
     if (session) {
       const saved = localStorage.getItem(`qqqqqq_identity_${session.id}`);
       if (saved) {
-        setTimeout(() => setSelectedPlayerId(saved), 0);
+        if (saved !== 'spectator') setTimeout(() => setSelectedPlayerId(saved), 0);
       } else {
         setTimeout(() => setShowIdentifyModal(true), 0);
       }
@@ -100,7 +100,7 @@ export default function PlayerMonitorPage() {
   }, [session]);
 
   const handleSelectIdentity = (id: string) => {
-    setSelectedPlayerId(id);
+    if (id !== 'spectator') setSelectedPlayerId(id);
     localStorage.setItem(`qqqqqq_identity_${session!.id}`, id);
     setShowIdentifyModal(false);
   };
@@ -146,6 +146,20 @@ export default function PlayerMonitorPage() {
       }
     }
   }, [matches, selectedPlayerId, session, players, courts]);
+
+  const [activeAnnouncement, setActiveAnnouncement] = useState<{ text: string, ts: number } | null>(null);
+
+  useEffect(() => {
+    if (session?.currentAnnouncement && session.announcementTimestamp) {
+      if (!activeAnnouncement || activeAnnouncement.ts !== session.announcementTimestamp) {
+        setActiveAnnouncement({ text: session.currentAnnouncement, ts: session.announcementTimestamp });
+        
+        // Auto-dismiss after 10 seconds
+        const t = setTimeout(() => setActiveAnnouncement(null), 10000);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [session?.currentAnnouncement, session?.announcementTimestamp, activeAnnouncement]);
 
   const endedSession = useStore.getState().sessionHistory.find(h => h.session.joinCode === code);
 
@@ -273,7 +287,7 @@ export default function PlayerMonitorPage() {
             </div>
             
             <button 
-              onClick={() => setShowIdentifyModal(false)}
+              onClick={() => handleSelectIdentity('spectator')}
               className="w-full py-3 text-slate-400 font-medium hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
             >
               Continue as Spectator
@@ -306,6 +320,24 @@ export default function PlayerMonitorPage() {
             >
               <CheckCircle size={20} /> I&apos;m on my way
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Organizer Announcement Toast */}
+      {activeAnnouncement && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 animate-slide-up w-[90%] max-w-md">
+          <div className="bg-indigo-600 text-white p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center gap-4 border border-indigo-400/50 relative">
+            <button onClick={() => setActiveAnnouncement(null)} className="absolute top-4 right-4 text-indigo-200 hover:text-white">
+              &times;
+            </button>
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+              <Megaphone size={24} className="animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black mb-1">Announcement</h3>
+              <p className="font-medium text-lg leading-relaxed">{activeAnnouncement.text}</p>
+            </div>
           </div>
         </div>
       )}

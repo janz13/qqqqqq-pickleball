@@ -89,6 +89,8 @@ export interface Session {
   isActive: boolean;
   courtsPerBatch: number;
   queueBatchesShown: number;
+  currentAnnouncement?: string;
+  announcementTimestamp?: number;
 }
 
 export interface ProposedMatch {

@@ -6,11 +6,13 @@ import { Megaphone, Play } from 'lucide-react';
 
 export default function AnnouncementPanel() {
   const tts = useTTS();
+  const { broadcastAnnouncement } = useStore();
   const [text, setText] = useState('');
 
   const handleAnnounce = () => {
     if (text.trim().length > 0) {
       tts.speak(text.trim(), true); // force announce even if disabled
+      broadcastAnnouncement(text.trim());
       setText('');
     }
   };
