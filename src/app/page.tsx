@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Play, Users, Shuffle, Trophy, ArrowRight, LayoutGrid, Mail, LogOut, History, ChevronRight } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase';
 
 export default function HomePage() {
   const [joinCode, setJoinCode] = useState('');
@@ -15,7 +16,7 @@ export default function HomePage() {
   
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory } = useStore();
-  const supabase = typeof window !== 'undefined' ? (require('@/lib/supabase').createClient()) : null;
+  const supabase = typeof window !== 'undefined' ? createClient() : null;
 
   useEffect(() => {
     if (currentUser && supabase) {
@@ -210,29 +211,51 @@ export default function HomePage() {
                 Create New Session
               </Link>
 
-              {roamingHistory.length > 0 && (
+              {(roamingHistory.length > 0 || sessionHistory.length > 0) && (
                 <div className="pt-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                      <History size={16} /> My Cloud Sessions
+                      <History size={16} /> My Sessions
                     </h3>
                   </div>
                   <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-2">
-                    {roamingHistory.map(session => (
+                    {/* Combine local and cloud history, preferring local if duplicates exist */}
+                    {Array.from(new Map(
+                      [
+                        ...roamingHistory,
+                        ...sessionHistory.map(h => ({
+                          id: h.session.id,
+                          join_code: h.session.joinCode,
+                          name: h.session.name,
+                          updated_at: new Date(h.endedAtEpochMs).toISOString(),
+                          created_at: new Date(h.session.createdAtEpochMs).toISOString(),
+                          is_local: true
+                        }))
+                      ].map(s => [s.id, s])
+                    ).values())
+                    .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+                    .map((session: any) => (
                       <div key={session.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700 group">
                         <Link 
-                          href={`/session/${session.join_code}`}
+                          href={session.is_local ? `/history/${session.id}` : `/session/${session.join_code}`}
                           className="flex-1 hover:opacity-70 transition-opacity"
                         >
-                          <p className="font-bold text-gray-900 dark:text-gray-100">{session.name || 'Unnamed Session'}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900 dark:text-gray-100">{session.name || 'Unnamed Session'}</p>
+                            {session.is_local && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Local</span>}
+                          </div>
                           <p className="text-xs text-gray-500">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</p>
                         </Link>
                         <button 
                           onClick={async () => {
                             if (confirm('Are you sure you want to delete this session permanently?')) {
-                              if (supabase) {
+                              if (supabase && !session.is_local) {
                                 await supabase.from('sessions').delete().eq('id', session.id);
                                 setRoamingHistory(prev => prev.filter(s => s.id !== session.id));
+                              } else {
+                                useStore.setState(state => ({
+                                  sessionHistory: state.sessionHistory.filter(h => h.session.id !== session.id)
+                                }));
                               }
                             }
                           }}
