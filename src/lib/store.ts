@@ -593,6 +593,27 @@ export const useStore = create<StoreState>()(
           players: sanitizePlayers(state.players),
           sessionHistory: historySansPhotos
         };
+      },
+      merge: (persistedState: any, currentState: StoreState) => {
+        // CRITICAL FIX for court glitch:
+        // If the current in-memory state already has a session loaded (e.g. from cloud fetch),
+        // do NOT let localStorage overwrite the live session data (players, courts, matches).
+        // Only merge non-session fields like roster, rostersByOwner, currentUser, tts settings, etc.
+        if (currentState.session && currentState.players.length > 0) {
+          return {
+            ...currentState,
+            // Only restore these non-session fields from localStorage:
+            currentUser: persistedState?.currentUser ?? currentState.currentUser,
+            roster: persistedState?.roster ?? currentState.roster,
+            rostersByOwner: persistedState?.rostersByOwner ?? currentState.rostersByOwner,
+            sessionHistory: persistedState?.sessionHistory ?? currentState.sessionHistory,
+            ttsEnabled: persistedState?.ttsEnabled ?? currentState.ttsEnabled,
+            ttsVoice: persistedState?.ttsVoice ?? currentState.ttsVoice,
+            ttsRate: persistedState?.ttsRate ?? currentState.ttsRate,
+          };
+        }
+        // Normal merge for organizer — localStorage is the source of truth
+        return { ...currentState, ...persistedState };
       }
     }
   )

@@ -20,64 +20,82 @@ export default function PlayerMonitorPage() {
   const [activeNotification, setActiveNotification] = useState<{court: string, partner: string, opponents: string} | null>(null);
   
   const lastMatchId = useRef<string | null>(null);
+  
+  // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
+  const lastCloudTimestamp = useRef<string>('');
 
-  // Cloud Sync for Player View
+  // Cloud Sync for Player View — this is the single source of truth.
+  // We track updated_at timestamps so that stale poll data can never overwrite
+  // a fresher realtime update (which was the root cause of the court glitch).
   useEffect(() => {
     let channel: any = null;
     let isMounted = true;
+    
+    const applyCloudState = (stateJson: any, updatedAt: string) => {
+      if (!isMounted || !stateJson) return;
+      
+      // CRITICAL: Only apply if this data is newer than what we already have.
+      // This prevents the 500ms organizer debounce window from causing flicker:
+      // the poll might fetch pre-change data while realtime already pushed the change.
+      if (updatedAt && lastCloudTimestamp.current && updatedAt < lastCloudTimestamp.current) {
+        return; // Silently discard stale data
+      }
+      lastCloudTimestamp.current = updatedAt || new Date().toISOString();
+      
+      useStore.setState({
+        session: stateJson.session,
+        players: stateJson.players,
+        courts: stateJson.courts,
+        matches: stateJson.matches
+      });
+    };
     
     const initRealtime = async () => {
        const { createClient } = await import('@/lib/supabase');
        const supabase = createClient();
        
-       if (supabase) {
-         // Initial fetch
-         const { data } = await supabase.from('sessions').select('state_json, is_active').eq('join_code', code).single();
-         if (data && data.state_json && isMounted) {
-            useStore.setState({
-               session: data.state_json.session,
-               players: data.state_json.players,
-               courts: data.state_json.courts,
-               matches: data.state_json.matches
-            });
-         }
-         
-         // Subscribe to changes
-         channel = supabase.channel(`player-view-${code}`)
-           .on('postgres_changes', { 
-             event: '*', 
-             schema: 'public', 
-             table: 'sessions', 
-             filter: `join_code=eq.${code}` 
-           }, (payload: any) => {
-             const newData = payload.new as any;
-             if (newData && newData.state_json && isMounted) {
-               useStore.setState({
-                 session: newData.state_json.session,
-                 players: newData.state_json.players,
-                 courts: newData.state_json.courts,
-                 matches: newData.state_json.matches
-               });
-             }
-           })
-           .subscribe();
-
-         // Polling fallback every 5 seconds in case realtime misses an update
-         const pollInterval = setInterval(async () => {
-           if (!isMounted) return;
-           const { data: pollData } = await supabase.from('sessions').select('state_json').eq('join_code', code).single();
-           if (pollData && pollData.state_json && isMounted) {
-              useStore.setState({
-                session: pollData.state_json.session,
-                players: pollData.state_json.players,
-                courts: pollData.state_json.courts,
-                matches: pollData.state_json.matches
-              });
-           }
-         }, 5000);
-         
-         return () => clearInterval(pollInterval);
+       if (!supabase) return;
+       
+       // Initial fetch
+       const { data } = await supabase
+         .from('sessions')
+         .select('state_json, is_active, updated_at')
+         .eq('join_code', code)
+         .single();
+       if (data) {
+         applyCloudState(data.state_json, data.updated_at);
        }
+       
+       // Subscribe to realtime changes
+       channel = supabase.channel(`player-view-${code}`)
+         .on('postgres_changes', { 
+           event: '*', 
+           schema: 'public', 
+           table: 'sessions', 
+           filter: `join_code=eq.${code}` 
+         }, (payload: any) => {
+           const newData = payload.new as any;
+           if (newData?.state_json) {
+             applyCloudState(newData.state_json, newData.updated_at);
+           }
+         })
+         .subscribe();
+
+       // Polling fallback every 8 seconds — only as a safety net.
+       // The timestamp check prevents it from ever reverting fresher realtime data.
+       const pollInterval = setInterval(async () => {
+         if (!isMounted) return;
+         const { data: pollData } = await supabase
+           .from('sessions')
+           .select('state_json, updated_at')
+           .eq('join_code', code)
+           .single();
+         if (pollData) {
+           applyCloudState(pollData.state_json, pollData.updated_at);
+         }
+       }, 8000);
+       
+       return () => clearInterval(pollInterval);
     };
     
     const cleanup = initRealtime();
