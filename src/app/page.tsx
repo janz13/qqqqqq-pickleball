@@ -134,6 +134,16 @@ export default function HomePage() {
                   Login to Organize
                 </button>
                 
+                <button 
+                  onClick={() => {
+                    const guestId = 'guest_' + Date.now().toString(36);
+                    setCurrentUser({ email: 'Guest Organizer', id: guestId });
+                    router.push('/dashboard/new');
+                  }}
+                  className="w-full min-h-[54px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm"
+                >
+                  Organize as Guest
+                </button>
               </div>
             </>
           )}
