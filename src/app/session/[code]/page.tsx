@@ -128,21 +128,28 @@ export default function PlayerMonitorPage() {
 
       setActiveNotification({ court, partner, opponents });
 
-      // Trigger browser notification
-      if (typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'granted') {
-          new Notification('Match Starting!', {
-            body: `Head to ${court}. You are playing with ${partner} against ${opponents}.`,
-          });
-        } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission().then(permission => {
-            if (permission === 'granted') {
-              new Notification('Match Starting!', {
-                body: `Head to ${court}. You are playing with ${partner} against ${opponents}.`,
-              });
+      // Trigger browser notification (wrapped in try-catch for strict mobile webviews)
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            new Notification('Match Starting!', {
+              body: `Head to ${court}. You are playing with ${partner} against ${opponents}.`,
+            });
+          } else if (Notification.permission !== 'denied') {
+            const permissionPromise = Notification.requestPermission();
+            if (permissionPromise && permissionPromise.then) {
+              permissionPromise.then(permission => {
+                if (permission === 'granted') {
+                  new Notification('Match Starting!', {
+                    body: `Head to ${court}. You are playing with ${partner} against ${opponents}.`,
+                  });
+                }
+              }).catch(e => console.error(e));
             }
-          });
+          }
         }
+      } catch (err) {
+        console.error("Browser notifications not supported or blocked in this webview", err);
       }
     }
   }, [matches, selectedPlayerId, session, players, courts]);
