@@ -31,19 +31,21 @@ export default function HistoryPage() {
       
       // Fallback: Fetch from cloud if not in local history
       try {
-        const { createClient } = require('@/lib/supabase');
+        const { createClient } = await import('@/lib/supabase');
         const supabase = createClient();
-        const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
-        if (data && data.state_json) {
-           setHistoryItem({
-             session: data.state_json.session,
-             players: data.state_json.players,
-             courts: data.state_json.courts,
-             matches: data.state_json.matches,
-             endedAtEpochMs: Date.now() // Approximation if missing
-           });
-        } else {
-           console.error("Cloud fetch failed:", error);
+        if (supabase) {
+          const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
+          if (data && data.state_json) {
+             setHistoryItem({
+               session: data.state_json.session,
+               players: data.state_json.players,
+               courts: data.state_json.courts,
+               matches: data.state_json.matches,
+               endedAtEpochMs: Date.now() // Approximation if missing
+             });
+          } else {
+             console.error("Cloud fetch failed:", error);
+          }
         }
       } catch(e) {
         console.error("Error fetching history from cloud", e);

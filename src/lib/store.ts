@@ -352,20 +352,25 @@ export const useStore = create<StoreState>()(
 
         // Force an immediate cloud update to broadcast that the session has ended
         if (typeof window !== 'undefined' && state.currentUser) {
-          const supabase = require('./supabase').createClient();
-          if (supabase) {
-             const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
-             const finalState = {
-               players: sanitizePlayers(state.players),
-               courts: state.courts,
-               matches: state.matches,
-               session: { ...state.session, isActive: false }
-             };
-             // Fire and forget
-             supabase.from('sessions').update({ 
-               is_active: false,
-               state_json: finalState
-             }).eq('id', state.session.id).then();
+          try {
+            import('./supabase').then(({ createClient }) => {
+              const supabase = createClient();
+              if (supabase) {
+                 const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
+                 const finalState = {
+                   players: sanitizePlayers(state.players),
+                   courts: state.courts,
+                   matches: state.matches,
+                   session: { ...state.session, isActive: false }
+                 };
+                 supabase.from('sessions').update({ 
+                   is_active: false,
+                   state_json: finalState
+                 }).eq('id', state.session!.id).then();
+              }
+            }).catch(e => console.error("Failed to load supabase", e));
+          } catch (e) {
+            console.error("Failed to broadcast session end", e);
           }
         }
 
