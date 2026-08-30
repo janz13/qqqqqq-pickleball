@@ -627,6 +627,10 @@ if (typeof window !== 'undefined') {
     // Only upload if they are the active organizer running a session
     if (!state.session?.isActive || !state.currentUser) return;
     
+    // CRITICAL: Only the actual owner of the session should upload state.
+    // If a viewer's phone echoes state back, it overwrites the DB with stale data and causes the court glitch.
+    if (state.session.ownerUid !== state.currentUser.id) return;
+    
     // Check if Supabase is connected
     const supabase = createClient();
     if (!supabase) return;
