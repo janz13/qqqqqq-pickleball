@@ -15,7 +15,7 @@ export default function HomePage() {
   const [roamingHistory, setRoamingHistory] = useState<any[]>([]);
   
   const router = useRouter();
-  const { currentUser, setCurrentUser, sessionHistory } = useStore();
+  const { currentUser, setCurrentUser, sessionHistory, session } = useStore();
   const supabase = typeof window !== 'undefined' ? createClient() : null;
 
   useEffect(() => {
@@ -202,6 +202,16 @@ export default function HomePage() {
                   <LogOut size={20} />
                 </button>
               </div>
+
+              {session && session.isActive && (
+                <Link 
+                  href={`/dashboard/${session.id}`}
+                  className="w-full min-h-[64px] bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-sm"
+                >
+                  <Play size={22} fill="currentColor" />
+                  Resume Active Session
+                </Link>
+              )}
 
               <Link 
                 href="/dashboard/new"
