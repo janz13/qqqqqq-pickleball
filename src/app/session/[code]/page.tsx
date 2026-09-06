@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store';
 import { CourtStatus, PlayerStatus } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
-import { Users, LayoutGrid, Bell, CheckCircle, Megaphone } from 'lucide-react';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
@@ -21,6 +21,8 @@ export default function PlayerMonitorPage() {
   
   const lastMatchId = useRef<string | null>(null);
   
+  const [activeTab, setActiveTab] = useState<'queue' | 'leaderboards'>('queue');
+
   // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
   const lastCloudTimestamp = useRef<string>('');
 
@@ -262,92 +264,163 @@ export default function PlayerMonitorPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-3xl font-black tracking-tight">Courts</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {courts.map(court => (
-              <CourtCard key={court.id} court={court} readOnly={true} />
-            ))}
-          </div>
+      <div className="max-w-7xl mx-auto px-4 mb-6">
+        <div className="flex bg-slate-800 p-1 rounded-2xl">
+          <button 
+            onClick={() => setActiveTab('queue')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+          >
+            <Users size={18} /> Queue
+          </button>
+          <button 
+            onClick={() => setActiveTab('leaderboards')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+          >
+            <Trophy size={18} /> Leaderboards
+          </button>
         </div>
+      </div>
 
-        <div className="space-y-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <h2 className="text-3xl font-black tracking-tight">Queue</h2>
-              <div className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 border border-blue-500/20">
-                <Users size={14} /> {queuedPlayers.length}
-              </div>
+      {activeTab === 'queue' && (
+        <main className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-3xl font-black tracking-tight">Courts</h2>
             </div>
-            {selectedPlayerId && (
-              <button 
-                onClick={() => setShowIdentifyModal(true)}
-                className="text-xs text-blue-400 hover:text-blue-300 underline"
-              >
-                Change Player
-              </button>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {courts.map(court => (
+                <CourtCard key={court.id} court={court} readOnly={true} />
+              ))}
+            </div>
           </div>
-          <div className="glass-dark rounded-3xl p-4 min-h-[400px] border border-white/5">
-            {queuedPlayers.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                <Users size={48} className="mb-4 opacity-20" />
-                <p className="font-medium">Queue is empty</p>
+
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl font-black tracking-tight">Queue</h2>
+                <div className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 border border-blue-500/20">
+                  <Users size={14} /> {queuedPlayers.length}
+                </div>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {queuedPlayers.map((player, idx) => (
-                  <div key={player.id} className="flex items-center gap-4">
-                    <span className="text-xl font-black text-slate-600 w-8 text-right font-mono">
-                      {idx + 1}
-                    </span>
-                    <div className={`flex-1 ${selectedPlayerId === player.id ? 'ring-2 ring-blue-500 rounded-2xl' : ''}`}>
-                      <PlayerCard player={player} compact />
+              {selectedPlayerId && (
+                <button 
+                  onClick={() => setShowIdentifyModal(true)}
+                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                  Change Player
+                </button>
+              )}
+            </div>
+            <div className="glass-dark rounded-3xl p-4 min-h-[400px] border border-white/5">
+              {queuedPlayers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                  <Users size={48} className="mb-4 opacity-20" />
+                  <p className="font-medium">Queue is empty</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {queuedPlayers.map((player, idx) => (
+                    <div key={player.id} className="flex items-center gap-4">
+                      <span className="text-xl font-black text-slate-600 w-8 text-right font-mono">
+                        {idx + 1}
+                      </span>
+                      <div className={`flex-1 ${selectedPlayerId === player.id ? 'ring-2 ring-blue-500 rounded-2xl' : ''}`}>
+                        <PlayerCard player={player} compact />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Next Up Section */}
+          {upcomingBatches.length > 0 && (
+            <div className="lg:col-span-3 space-y-4 mt-4">
+              <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
+                <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>
+                Next Up
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {upcomingBatches.map((batch, idx) => (
+                  <div key={idx} className="glass-dark rounded-2xl p-4 border border-white/5">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Match {idx + 1}</div>
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-1">
+                        {batch.teamA.map(p => (
+                          <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-blue-400' : ''}`}>
+                            {p.name}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-center text-xs font-bold text-slate-500">VS</div>
+                      <div className="flex flex-col gap-1">
+                        {batch.teamB.map(p => (
+                          <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-rose-400' : ''}`}>
+                            {p.name}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </main>
+      )}
+
+      {activeTab === 'leaderboards' && (
+        <main className="max-w-7xl mx-auto px-4">
+          <div className="glass-dark rounded-3xl p-6 border border-white/5">
+            <h2 className="text-2xl font-black tracking-tight mb-6 flex items-center gap-3">
+              <Trophy className="text-amber-400" />
+              Session Leaderboard
+            </h2>
+            
+            {players.filter(p => p.sessionGamesPlayed > 0).length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                <Trophy size={48} className="mb-4 opacity-20" />
+                <p className="font-medium">No matches completed yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {[...players]
+                  .filter(p => p.sessionGamesPlayed > 0)
+                  .sort((a, b) => {
+                    if (b.sessionWins !== a.sessionWins) return b.sessionWins - a.sessionWins;
+                    const winPctA = a.sessionWins / a.sessionGamesPlayed;
+                    const winPctB = b.sessionWins / b.sessionGamesPlayed;
+                    if (winPctB !== winPctA) return winPctB - winPctA;
+                    return b.sessionGamesPlayed - a.sessionGamesPlayed;
+                  })
+                  .map((player, idx) => {
+                  const winPct = ((player.sessionWins / player.sessionGamesPlayed) * 100).toFixed(0);
+                  return (
+                    <div key={player.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                      <div className="text-2xl font-black text-slate-500 w-8 text-center font-mono">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-lg text-slate-100 truncate">{player.name}</h3>
+                        <p className="text-sm text-slate-400 uppercase tracking-widest mt-0.5">Level {player.skillLevel}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-2xl font-black text-emerald-400">
+                          {winPct}%
+                        </div>
+                        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
+                          {player.sessionWins}W - {player.sessionLosses}L
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
-        </div>
-
-        {/* Next Up Section */}
-        {upcomingBatches.length > 0 && (
-          <div className="lg:col-span-3 space-y-4 mt-4">
-            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-              <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>
-              Next Up
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {upcomingBatches.map((batch, idx) => (
-                <div key={idx} className="glass-dark rounded-2xl p-4 border border-white/5">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Match {idx + 1}</div>
-                  <div className="space-y-2">
-                    <div className="flex flex-col gap-1">
-                      {batch.teamA.map(p => (
-                        <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-blue-400' : ''}`}>
-                          {p.name}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="text-center text-xs font-bold text-slate-500">VS</div>
-                    <div className="flex flex-col gap-1">
-                      {batch.teamB.map(p => (
-                        <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-rose-400' : ''}`}>
-                          {p.name}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
+        </main>
+      )}
 
       {/* Identity Selection Modal */}
       {showIdentifyModal && (

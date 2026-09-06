@@ -60,7 +60,8 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
           </div>
           <span className="font-medium text-gray-900 dark:text-gray-100">{player.name}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">GP: {player.sessionGamesPlayed}</span>
           <div className={`w-2.5 h-2.5 rounded-full ${statusColors[player.status]}`} />
         </div>
       </button>
