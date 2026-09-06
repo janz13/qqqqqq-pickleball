@@ -49,7 +49,7 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
     'bg-rose-500 text-white';
 
   return (
-    <div className="flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-all duration-200 animate-slide-up">
+    <div className="flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-all duration-200">
       <div className={`flex items-center justify-between p-4 ${headerGradient}`}>
         <div className="flex items-center gap-2">
           <h3 className="font-bold tracking-tight text-lg">{court.label}</h3>

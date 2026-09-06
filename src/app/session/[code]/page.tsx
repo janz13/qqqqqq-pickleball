@@ -36,13 +36,14 @@ export default function PlayerMonitorPage() {
     const applyCloudState = (stateJson: any, updatedAt: string) => {
       if (!isMounted || !stateJson) return;
       
-      // CRITICAL: Compare timestamps numerically rather than lexicographically,
-      // as postgres timestamps may use space (' ') while JS uses 'T'.
+      // CRITICAL: Compare timestamps numerically.
+      // Discard if the cloud data is older than or EQUAL to what we already rendered.
+      // This eliminates redundant re-renders and animation flickering.
       if (updatedAt && lastCloudTimestamp.current) {
         const newTime = new Date(updatedAt).getTime();
         const lastTime = new Date(lastCloudTimestamp.current).getTime();
-        if (!isNaN(newTime) && !isNaN(lastTime) && newTime < lastTime) {
-          return; // Silently discard truly stale data
+        if (!isNaN(newTime) && !isNaN(lastTime) && newTime <= lastTime) {
+          return; // Identical or older data — silently discard
         }
       }
       lastCloudTimestamp.current = updatedAt || new Date().toISOString();
@@ -87,7 +88,7 @@ export default function PlayerMonitorPage() {
          .subscribe();
 
        // Polling fallback every 8 seconds — only as a safety net.
-       // The timestamp check prevents it from ever reverting fresher realtime data.
+       // The timestamp check (<=) prevents it from ever re-rendering unchanged data.
        const pollInterval = setInterval(async () => {
          if (!isMounted) return;
          const { data: pollData } = await supabase
@@ -110,24 +111,6 @@ export default function PlayerMonitorPage() {
        if (channel) channel.unsubscribe();
        cleanup?.then(fn => fn?.());
     };
-  }, [code]);
-
-  // Instant cross-tab sync when organizer tests in multiple tabs on the same computer
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('qqqqqq_cross_tab_sync');
-      channel.onmessage = (event) => {
-        if (event.data?.type === 'LOCAL_SYNC' && event.data.joinCode === code) {
-          useStore.setState({
-            session: event.data.session,
-            players: event.data.players,
-            courts: event.data.courts,
-            matches: event.data.matches
-          });
-        }
-      };
-      return () => channel.close();
-    }
   }, [code]);
 
   // Redirect on end session
