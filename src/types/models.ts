@@ -42,6 +42,7 @@ export interface Player {
   // --- Recent partner/opponent history ---
   recentPartnerIds: string[];
   recentOpponentIds: string[];
+  lastMatchResult?: 'won' | 'lost' | null;
 
   // --- Duo Queue ---
   lockedPartnerId: string | null;
@@ -89,6 +90,7 @@ export interface Session {
   isActive: boolean;
   courtsPerBatch: number;
   queueBatchesShown: number;
+  matchingMode?: 'balanced' | 'competitive';
   currentAnnouncement?: string;
   announcementTimestamp?: number;
 }
@@ -123,6 +125,7 @@ export function createPlayer(overrides: Partial<Player> = {}): Player {
     hasCaughtUp: true,
     recentPartnerIds: [],
     recentOpponentIds: [],
+    lastMatchResult: null,
     lockedPartnerId: null,
     duprProfileUrl: null,
     ...overrides,

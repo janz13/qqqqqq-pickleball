@@ -1,15 +1,61 @@
 "use client";
 import React from 'react';
 import { useTTS } from '@/hooks/useTTS';
-import { Volume2, Mic, Play } from 'lucide-react';
+import { Volume2, Mic, Play, Settings2 } from 'lucide-react';
+import { useStore } from '@/lib/store';
 
 export default function TTSSettingsPanel() {
   const tts = useTTS();
+  const { session, updateSession } = useStore();
+
+  const handleModeChange = (mode: 'balanced' | 'competitive') => {
+    if (session) {
+      updateSession(session.id, { matchingMode: mode });
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto animate-slide-up">
-      <h2 className="text-3xl font-black tracking-tight text-slate-800 dark:text-slate-100">Announcements</h2>
+    <div className="flex flex-col gap-6 max-w-2xl mx-auto animate-slide-up pb-20">
+      <h2 className="text-3xl font-black tracking-tight text-slate-800 dark:text-slate-100">Settings</h2>
       
+      <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl mb-6">
+        <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-700 pb-6">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+            <Settings2 size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-xl tracking-tight">Matchmaking Engine</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">How players are grouped onto courts.</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <button 
+            onClick={() => handleModeChange('balanced')}
+            className={`text-left p-4 border-2 rounded-2xl transition-all ${
+              (!session?.matchingMode || session?.matchingMode === 'balanced') 
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10' 
+                : 'border-slate-200 dark:border-slate-700 hover:border-purple-300'
+            }`}
+          >
+            <div className="font-bold text-lg text-slate-800 dark:text-slate-100">Balanced (Mixer)</div>
+            <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Mixes up partners and opponents every round. Prioritizes fair wait times and variety.</div>
+          </button>
+          
+          <button 
+            onClick={() => handleModeChange('competitive')}
+            className={`text-left p-4 border-2 rounded-2xl transition-all ${
+              session?.matchingMode === 'competitive' 
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10' 
+                : 'border-slate-200 dark:border-slate-700 hover:border-purple-300'
+            }`}
+          >
+            <div className="font-bold text-lg text-slate-800 dark:text-slate-100">Competitive (Skill & Ladder)</div>
+            <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Skill Separated + Winners/Losers tracking. Strictly groups players of the same skill level, and tries to pair winners with winners.</div>
+          </button>
+        </div>
+      </div>
+
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">

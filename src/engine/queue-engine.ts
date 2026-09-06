@@ -42,7 +42,8 @@ export function priorityOrder(pool: Player[]): Player[] {
  */
 export function buildNextBatches(
   availablePlayers: Player[],
-  openCourtCount: number
+  openCourtCount: number,
+  matchingMode: 'balanced' | 'competitive' = 'balanced'
 ): Player[][] {
   if (openCourtCount <= 0) return [];
 
@@ -122,7 +123,30 @@ export function buildNextBatches(
         queuePositionPenalty += sorted.findIndex((sp) => sp.id === p.id);
       }
 
-      const total = varietyScore + skipPenalty + queuePositionPenalty;
+      let competitivePenalty = 0;
+      if (matchingMode === 'competitive') {
+        let winners = 0;
+        let losers = 0;
+        let maxSkill = 0;
+        let minSkill = 5;
+
+        for (const p of four) {
+          if (p.skillLevel > maxSkill) maxSkill = p.skillLevel;
+          if (p.skillLevel < minSkill) minSkill = p.skillLevel;
+          if (p.lastMatchResult === 'won') winners++;
+          else if (p.lastMatchResult === 'lost') losers++;
+        }
+        
+        // Skill Separated: Penalty for any skill gap across the 4 players
+        const skillDiff = maxSkill - minSkill;
+        competitivePenalty += skillDiff * 50000;
+
+        // Winners/Losers: Group winners together, losers together.
+        // A mixed group (e.g. 2 winners, 2 losers) gets penalized heavily.
+        competitivePenalty += Math.min(winners, losers) * 10000;
+      }
+
+      const total = varietyScore + skipPenalty + queuePositionPenalty + competitivePenalty;
       if (total < bestTotal) {
         bestTotal = total;
         chosenFour = four;

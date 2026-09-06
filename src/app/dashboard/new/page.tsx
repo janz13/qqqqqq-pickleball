@@ -9,7 +9,8 @@ export default function NewSessionPage() {
   const router = useRouter();
   const [name, setName] = useState('Weekend Open Play');
   const [courtsCount, setCourtsCount] = useState(4);
-  const { initializeSession, currentUser } = useStore();
+  const [matchingMode, setMatchingMode] = useState<'balanced' | 'competitive'>('balanced');
+  const { initializeSession, updateSession, currentUser } = useStore();
 
   useEffect(() => {
     if (!currentUser) router.push('/');
@@ -18,6 +19,7 @@ export default function NewSessionPage() {
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
     const newSession = initializeSession(name, courtsCount);
+    updateSession(newSession.id, { matchingMode });
     router.push(`/dashboard/${newSession.id}`);
   };
 
@@ -72,6 +74,28 @@ export default function NewSessionPage() {
                   <LayoutGrid size={18} />
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 ml-1 uppercase tracking-wider">Queue Mode</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMatchingMode('balanced')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'balanced' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
+              >
+                <div className="font-bold text-slate-800 dark:text-slate-100">Balanced</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Standard mixer. Focuses on fair wait times and partner variety.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMatchingMode('competitive')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'competitive' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
+              >
+                <div className="font-bold text-slate-800 dark:text-slate-100">Competitive</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Ladder style. Groups exact skill levels & matches winners together.</div>
+              </button>
             </div>
           </div>
 

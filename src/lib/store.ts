@@ -19,6 +19,7 @@ interface StoreState {
   rostersByOwner: Record<string, Player[]>;
   
   setSession: (session: Session | null) => void;
+  updateSession: (sessionId: string, updates: Partial<Session>) => void;
   setPlayers: (players: Player[]) => void;
   setCourts: (courts: Court[]) => void;
   setMatches: (matches: Match[]) => void;
@@ -105,6 +106,12 @@ export const useStore = create<StoreState>()(
       setTTSRate: (rate) => set({ ttsRate: rate }),
       
       setSession: (session) => set({ session, sessionId: session?.id ?? null, joinCode: session?.joinCode ?? null }),
+      updateSession: (sessionId, updates) => set(state => {
+        if (state.session?.id === sessionId) {
+          return { session: { ...state.session, ...updates } };
+        }
+        return state;
+      }),
       setPlayers: (players) => set({ players }),
       setCourts: (courts) => set({ courts }),
       setMatches: (matches) => set({ matches }),
@@ -255,6 +262,7 @@ export const useStore = create<StoreState>()(
               allTimeLosses: p.allTimeLosses + (!won ? 1 : 0),
               recentPartnerIds: recentPartners,
               recentOpponentIds: recentOpponents,
+              lastMatchResult: (won ? 'won' : 'lost') as 'won' | 'lost',
               consecutiveSitOuts: 0
             };
           }
@@ -562,7 +570,8 @@ export const useStore = create<StoreState>()(
         const openCourts = state.courts.filter(c => c.status === CourtStatus.OPEN).length;
         if (openCourts === 0) return [];
 
-        const batches = buildNextBatches(state.players, openCourts);
+        const mode = state.session?.matchingMode || 'balanced';
+        const batches = buildNextBatches(state.players, openCourts, mode);
         return batches.map(b => pairFour(b));
       },
 
