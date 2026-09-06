@@ -91,6 +91,7 @@ export interface Session {
   courtsPerBatch: number;
   queueBatchesShown: number;
   matchingMode?: 'balanced' | 'competitive';
+  showNextUpToPlayers?: boolean;
   currentAnnouncement?: string;
   announcementTimestamp?: number;
 }

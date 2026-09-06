@@ -331,11 +331,16 @@ export default function PlayerMonitorPage() {
                   ))}
                 </div>
               )}
+              {queuedPlayers.length > 0 && (
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-4 px-2 text-center italic border-t border-white/5 pt-3 leading-tight">
+                  * Queue shows priority order. Exact call-ups may vary slightly to balance skill matchups and partner locks.
+                </p>
+              )}
             </div>
           </div>
 
           {/* Next Up Section */}
-          {upcomingBatches.length > 0 && (
+          {(session.showNextUpToPlayers ?? true) && upcomingBatches.length > 0 && (
             <div className="lg:col-span-3 space-y-4 mt-4">
               <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
                 <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>

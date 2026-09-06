@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { useTTS } from '@/hooks/useTTS';
-import { Volume2, Mic, Play, Settings2 } from 'lucide-react';
+import { Volume2, Mic, Play, Settings2, Eye } from 'lucide-react';
 import { useStore } from '@/lib/store';
 
 export default function TTSSettingsPanel() {
@@ -18,7 +18,8 @@ export default function TTSSettingsPanel() {
     <div className="flex flex-col gap-6 max-w-2xl mx-auto animate-slide-up pb-20">
       <h2 className="text-3xl font-black tracking-tight text-slate-800 dark:text-slate-100">Settings</h2>
       
-      <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl mb-6">
+      {/* Matchmaking Mode Card */}
+      <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl mb-2">
         <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-700 pb-6">
           <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md">
             <Settings2 size={24} />
@@ -54,6 +55,39 @@ export default function TTSSettingsPanel() {
             <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Skill Separated + Winners/Losers tracking. Strictly groups players of the same skill level, and tries to pair winners with winners.</div>
           </button>
         </div>
+      </div>
+
+      {/* Player View Display Card */}
+      <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-6 shadow-xl mb-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-md shrink-0">
+              <Eye size={24} />
+            </div>
+            <div>
+              <h3 className="font-bold text-xl tracking-tight">Show &quot;Next Up&quot; to Players</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">
+                Allow players scanning the QR code to preview projected match batches.
+              </p>
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input 
+              type="checkbox" 
+              className="sr-only peer" 
+              checked={session?.showNextUpToPlayers ?? true} 
+              onChange={(e) => {
+                if (session) {
+                  updateSession(session.id, { showNextUpToPlayers: e.target.checked });
+                }
+              }} 
+            />
+            <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-cyan-500 shadow-inner"></div>
+          </label>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 p-3.5 rounded-xl leading-relaxed">
+          💡 Turn this off if you make frequent manual swaps or adjustments, so players don&apos;t expect a specific pairing until their court is actively assigned.
+        </p>
       </div>
 
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl">

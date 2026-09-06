@@ -447,7 +447,8 @@ export const useStore = create<StoreState>()(
           createdAtEpochMs: Date.now(),
           isActive: true,
           courtsPerBatch: courtsCount,
-          queueBatchesShown: 2
+          queueBatchesShown: 2,
+          showNextUpToPlayers: true
         };
 
         const initialCourts: Court[] = Array.from({ length: courtsCount }).map((_, i) => ({
