@@ -36,11 +36,14 @@ export default function PlayerMonitorPage() {
     const applyCloudState = (stateJson: any, updatedAt: string) => {
       if (!isMounted || !stateJson) return;
       
-      // CRITICAL: Only apply if this data is newer than what we already have.
-      // This prevents the 500ms organizer debounce window from causing flicker:
-      // the poll might fetch pre-change data while realtime already pushed the change.
-      if (updatedAt && lastCloudTimestamp.current && updatedAt < lastCloudTimestamp.current) {
-        return; // Silently discard stale data
+      // CRITICAL: Compare timestamps numerically rather than lexicographically,
+      // as postgres timestamps may use space (' ') while JS uses 'T'.
+      if (updatedAt && lastCloudTimestamp.current) {
+        const newTime = new Date(updatedAt).getTime();
+        const lastTime = new Date(lastCloudTimestamp.current).getTime();
+        if (!isNaN(newTime) && !isNaN(lastTime) && newTime < lastTime) {
+          return; // Silently discard truly stale data
+        }
       }
       lastCloudTimestamp.current = updatedAt || new Date().toISOString();
       
@@ -107,6 +110,24 @@ export default function PlayerMonitorPage() {
        if (channel) channel.unsubscribe();
        cleanup?.then(fn => fn?.());
     };
+  }, [code]);
+
+  // Instant cross-tab sync when organizer tests in multiple tabs on the same computer
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('qqqqqq_cross_tab_sync');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'LOCAL_SYNC' && event.data.joinCode === code) {
+          useStore.setState({
+            session: event.data.session,
+            players: event.data.players,
+            courts: event.data.courts,
+            matches: event.data.matches
+          });
+        }
+      };
+      return () => channel.close();
+    }
   }, [code]);
 
   // Redirect on end session
@@ -239,7 +260,7 @@ export default function PlayerMonitorPage() {
   // Calculate upcoming batches for player view
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
   const upcomingBatches = openCourtsCount > 0 
-    ? buildNextBatches(players, openCourtsCount).map(b => pairFour(b))
+    ? buildNextBatches(players, openCourtsCount, session?.matchingMode || 'balanced').map(b => pairFour(b))
     : [];
 
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;

@@ -633,7 +633,24 @@ import { createClient } from './supabase';
 
 if (typeof window !== 'undefined') {
   let syncTimeout: any;
+  let crossTabChannel: BroadcastChannel | null = null;
+  if (typeof BroadcastChannel !== 'undefined') {
+    crossTabChannel = new BroadcastChannel('qqqqqq_cross_tab_sync');
+  }
+
   useStore.subscribe((state) => {
+    // 1. Instantly synchronize other tabs on the same device (e.g. organizer opening "View as Player" in another tab)
+    if (crossTabChannel && state.session?.isActive) {
+      crossTabChannel.postMessage({
+        type: 'LOCAL_SYNC',
+        joinCode: state.session.joinCode,
+        session: state.session,
+        players: state.players,
+        courts: state.courts,
+        matches: state.matches
+      });
+    }
+
     // Only upload if they are the active organizer running a session
     if (!state.session?.isActive || !state.currentUser) return;
     
