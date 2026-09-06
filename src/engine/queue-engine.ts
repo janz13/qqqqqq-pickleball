@@ -129,21 +129,45 @@ export function buildNextBatches(
         let losers = 0;
         let maxSkill = 0;
         let minSkill = 5;
+        let maxSitOutsInGroup = 0;
 
         for (const p of four) {
           if (p.skillLevel > maxSkill) maxSkill = p.skillLevel;
           if (p.skillLevel < minSkill) minSkill = p.skillLevel;
           if (p.lastMatchResult === 'won') winners++;
           else if (p.lastMatchResult === 'lost') losers++;
+          if (p.consecutiveSitOuts > maxSitOutsInGroup) maxSitOutsInGroup = p.consecutiveSitOuts;
         }
-        
-        // Skill Separated: Penalty for any skill gap across the 4 players
-        const skillDiff = maxSkill - minSkill;
-        competitivePenalty += skillDiff * 50000;
 
-        // Winners/Losers: Group winners together, losers together.
-        // A mixed group (e.g. 2 winners, 2 losers) gets penalized heavily.
-        competitivePenalty += Math.min(winners, losers) * 10000;
+        const skillDiff = maxSkill - minSkill;
+
+        if (skillDiff === 0) {
+          // Pure same-skill tier match (best default)
+          competitivePenalty += 0;
+        } else if (skillDiff === 1) {
+          // Adjacent tier mixing (e.g. L4 with L3, or L3 with L2).
+          // If anyone in the group has sat out 1+ round, eliminate the penalty completely.
+          // Otherwise, a tiny 150 penalty ensures pure tier matches are preferred when everyone is fresh.
+          competitivePenalty += maxSitOutsInGroup >= 1 ? 0 : 150;
+
+          // Earned Promotion: If a lower-tier player won their last game, reward their ladder climb
+          for (const p of four) {
+            if (p.skillLevel === minSkill && p.lastMatchResult === 'won') {
+              competitivePenalty -= 50;
+            }
+          }
+        } else if (skillDiff === 2) {
+          // 2-tier span (e.g. 1x L5 + 2x L4 + 1x L3 = 8 vs 8 balanced match).
+          // If someone has sat out 2+ rounds, eliminate the penalty completely so they never get stranded.
+          competitivePenalty += maxSitOutsInGroup >= 2 ? 0 : Math.max(100, 500 - maxSitOutsInGroup * 200);
+        } else {
+          // 3+ tier gap (e.g. Level 5 with Level 2 or Level 1): Strictly forbidden
+          competitivePenalty += skillDiff * 100000;
+        }
+
+        // Winners/Losers Ladder alignment:
+        // Group winners together and losers together where possible
+        competitivePenalty += Math.min(winners, losers) * 400;
       }
 
       const total = varietyScore + skipPenalty + queuePositionPenalty + competitivePenalty;
