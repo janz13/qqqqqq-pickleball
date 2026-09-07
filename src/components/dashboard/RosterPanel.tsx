@@ -1,24 +1,25 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
 import { PlayerStatus, createPlayer, Player } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
-import { Plus, Search, Upload, Download, FileUp } from 'lucide-react';
+import { Plus, Search, Upload, Download, FileUp, RefreshCw, Check } from 'lucide-react';
 
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable react-hooks/purity */
  
 
 export default function RosterPanel() {
-  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, setLockedPartner, unlockPartner, clearRoster } = useStore();
+  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, clearRoster, syncCloudRoster, currentUser } = useStore();
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerSkill, setNewPlayerSkill] = useState(3);
   const [checkInNow, setCheckInNow] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'AVAILABLE' | 'PLAYING' | 'RESTING' | 'CHECKED_OUT'>('ALL');
   const [search, setSearch] = useState('');
   const [nameError, setNameError] = useState('');
+  const [isSyncingRoster, setIsSyncingRoster] = useState(false);
   
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,8 +113,46 @@ export default function RosterPanel() {
           consecutiveSitOuts: 0,
           recentPartnerIds: [],
           recentOpponentIds: [],
-          lockedPartnerId: null
+          lockedPartnerId: null,
+          allTimeWins: savedPlayer.allTimeWins || 0,
+          allTimeLosses: savedPlayer.allTimeLosses || 0,
+          allTimeGamesPlayed: savedPlayer.allTimeGamesPlayed || 0,
+          allTimeSessionsPlayed: savedPlayer.allTimeSessionsPlayed || 0
       });
+  };
+
+  const handleLoadAllFromRoster = () => {
+    const unadded = roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase()));
+    unadded.forEach(savedPlayer => {
+      addPlayer({
+        ...savedPlayer,
+        id: generateId(),
+        status: PlayerStatus.AVAILABLE,
+        queuedAtEpochMs: getNow(),
+        joinedSessionAtEpochMs: getNow(),
+        isLatecomer: players.length > 8,
+        currentCourtId: null,
+        sessionGamesPlayed: 0,
+        sessionWins: 0,
+        sessionLosses: 0,
+        consecutiveSitOuts: 0,
+        recentPartnerIds: [],
+        recentOpponentIds: [],
+        lockedPartnerId: null,
+        allTimeWins: savedPlayer.allTimeWins || 0,
+        allTimeLosses: savedPlayer.allTimeLosses || 0,
+        allTimeGamesPlayed: savedPlayer.allTimeGamesPlayed || 0,
+        allTimeSessionsPlayed: savedPlayer.allTimeSessionsPlayed || 0
+      });
+    });
+  };
+
+  const handleSyncCloud = async () => {
+    if (currentUser && !currentUser.id.startsWith('guest_')) {
+      setIsSyncingRoster(true);
+      await syncCloudRoster(currentUser.id);
+      setIsSyncingRoster(false);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,26 +277,69 @@ export default function RosterPanel() {
               </div>
             </div>
             
-            {roster.length > 0 && (
+            {(roster.length > 0 || (currentUser && !currentUser.id.startsWith('guest_'))) && (
                 <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-6 rounded-2xl flex flex-col gap-4">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-bold tracking-tight">Load from Roster</h2>
-                    <button 
-                      onClick={() => confirm('Clear all saved players from this device?') && clearRoster()} 
-                      className="text-xs text-red-500 hover:text-red-600 font-semibold transition-colors"
-                    >
-                      Clear Device Roster
-                    </button>
+                  <div className="flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <h2 className="text-lg font-bold tracking-tight">Load from Roster</h2>
+                      <p className="text-xs text-gray-500">Repeat open play players</p>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {currentUser && !currentUser.id.startsWith('guest_') && (
+                        <button
+                          type="button"
+                          onClick={handleSyncCloud}
+                          disabled={isSyncingRoster}
+                          className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                          title="Refresh roster from cloud sessions"
+                        >
+                          <RefreshCw size={15} className={isSyncingRoster ? 'animate-spin text-blue-600' : ''} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => confirm('Clear all saved players from this device?') && clearRoster()} 
+                        className="text-xs text-red-500 hover:text-red-600 font-semibold transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
+
+                  {roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleLoadAllFromRoster}
+                      className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+                    >
+                      <Check size={14} />
+                      <span>Add All Available Roster Players ({roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).length})</span>
+                    </button>
+                  )}
+
+                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
                       {roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).map(saved => (
-                          <div key={saved.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2 rounded-lg">
-                              <span className="font-medium text-sm">{saved.name} (L{saved.skillLevel})</span>
-                              <button onClick={() => handleLoadFromRoster(saved)} className="bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 px-3 py-1 rounded-md text-xs font-bold transition-colors">Add</button>
+                          <div key={saved.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2.5 rounded-xl border border-gray-100 dark:border-gray-700/60">
+                              <div className="min-w-0 flex-1 pr-2">
+                                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{saved.name}</div>
+                                <div className="text-[11px] text-gray-500 flex items-center gap-2">
+                                  <span className="font-bold text-blue-600 dark:text-blue-400">L{saved.skillLevel}</span>
+                                  <span>•</span>
+                                  <span>{saved.allTimeWins}W - {saved.allTimeLosses}L ({saved.allTimeGamesPlayed} GP)</span>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => handleLoadFromRoster(saved)} 
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm shrink-0"
+                              >
+                                Add
+                              </button>
                           </div>
                       ))}
                       {roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).length === 0 && (
-                          <div className="text-sm text-gray-500 text-center">All roster players added.</div>
+                          <div className="text-xs text-gray-500 text-center py-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                            {roster.length === 0 ? 'No players in roster. Add players or sync from cloud.' : 'All roster players have been added to this session.'}
+                          </div>
                       )}
                   </div>
                 </div>

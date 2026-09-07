@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
 import { Team, Player, Match } from '@/types/models';
@@ -14,12 +15,75 @@ import {
   AlertTriangle, 
   X,
   Swords,
-  Timer
+  Timer,
+  ExternalLink,
+  Calendar,
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 
 export default function MatchHistoryPanel() {
-  const { matches, players, courts, roster, reverseMatchWinner } = useStore();
+  const { matches, players, courts, roster, reverseMatchWinner, sessionHistory, currentUser } = useStore();
   const [matchToReverse, setMatchToReverse] = useState<Match | null>(null);
+  const [subTab, setSubTab] = useState<'current' | 'past'>('current');
+  const [cloudSessions, setCloudSessions] = useState<any[]>([]);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (subTab === 'past' && currentUser && !currentUser.id.startsWith('guest_')) {
+      const loadPastSessions = async () => {
+        try {
+          const { createClient } = await import('@/lib/supabase');
+          if (isMounted) setIsLoadingCloud(true);
+          const supabase = createClient();
+          if (supabase) {
+            const res = await supabase
+              .from('sessions')
+              .select('*')
+              .eq('owner_uid', currentUser.id)
+              .order('updated_at', { ascending: false });
+            if (res.data && isMounted) {
+              setCloudSessions(res.data);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load past sessions', e);
+        } finally {
+          if (isMounted) setIsLoadingCloud(false);
+        }
+      };
+      loadPastSessions();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [subTab, currentUser]);
+
+  const allPastSessions = Array.from(new Map(
+    [
+      ...cloudSessions.map(r => ({
+        id: r.id,
+        joinCode: r.join_code,
+        name: r.state_json?.session?.name || ('Session ' + r.join_code),
+        updatedAt: r.updated_at,
+        isActive: r.is_active,
+        matchesCount: r.state_json?.matches?.length || 0,
+        playersCount: r.state_json?.players?.length || 0,
+        isLocal: false
+      })),
+      ...sessionHistory.map(h => ({
+        id: h.session.id,
+        joinCode: h.session.joinCode,
+        name: h.session.name || ('Session ' + h.session.joinCode),
+        updatedAt: new Date(h.endedAtEpochMs).toISOString(),
+        isActive: false,
+        matchesCount: h.matches.length,
+        playersCount: h.players.length,
+        isLocal: true
+      }))
+    ].map(s => [s.id, s])
+  ).values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   // Filter completed matches (where endedAtEpochMs is not null)
   const completedMatches = matches.filter(m => m.endedAtEpochMs !== null);
@@ -94,22 +158,136 @@ export default function MatchHistoryPanel() {
     <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-slide-up">
       {/* Header & Summary Statistics */}
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
               <History size={22} />
             </div>
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                Match History
+                {subTab === 'current' ? 'Match History' : 'Previous Sessions'}
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Review completed session matches and adjust results
+                {subTab === 'current' 
+                  ? 'Review completed session matches and adjust results' 
+                  : 'Browse past sessions, view full game breakdowns and historical leaderboards'}
               </p>
             </div>
           </div>
-        </div>
 
+          <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl inline-flex shadow-inner self-start sm:self-auto">
+            <button
+              onClick={() => setSubTab('current')}
+              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-all duration-200 ${
+                subTab === 'current'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+              }`}
+            >
+              Current Matches ({completedMatches.length})
+            </button>
+            <button
+              onClick={() => setSubTab('past')}
+              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-all duration-200 ${
+                subTab === 'past'
+                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+              }`}
+            >
+              Past Sessions ({allPastSessions.length})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {subTab === 'past' ? (
+        <div className="space-y-4 pt-2">
+          {isLoadingCloud ? (
+            <div className="text-center py-16 px-4 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm">
+              <Loader2 size={32} className="animate-spin text-blue-500 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Loading previous sessions from cloud...</p>
+            </div>
+          ) : allPastSessions.length === 0 ? (
+            <div className="text-center py-16 px-4 bg-white dark:bg-gray-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800 shadow-sm">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500">
+                <Calendar size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
+                No previous sessions found
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Completed and ended sessions will appear here with complete match history and player leaderboards.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {allPastSessions.map(sessionItem => (
+                <div 
+                  key={sessionItem.id}
+                  className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+                >
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{sessionItem.name}</h3>
+                      {sessionItem.isActive ? (
+                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse-soft">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          Ended
+                        </span>
+                      )}
+                      {sessionItem.isLocal && (
+                        <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          Local
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                      <span className="flex items-center gap-1 font-medium">
+                        <Calendar size={13} className="text-gray-400" />
+                        {new Date(sessionItem.updatedAt).toLocaleDateString()} at {new Date(sessionItem.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span>•</span>
+                      <span><strong>{sessionItem.matchesCount}</strong> matches</span>
+                      <span>•</span>
+                      <span><strong>{sessionItem.playersCount}</strong> players</span>
+                      <span>•</span>
+                      <span>Code: <strong className="font-mono">{sessionItem.joinCode}</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/history/${sessionItem.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>View Analysis</span>
+                      <ExternalLink size={13} />
+                    </Link>
+
+                    <Link
+                      href={`/session/${sessionItem.joinCode}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1"
+                      title="Open Live Player View"
+                    >
+                      <Users size={13} />
+                      <span className="hidden sm:inline">Player View</span>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
         {/* Summary Metric Badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm p-4 rounded-2xl flex items-center gap-4">
@@ -154,7 +332,6 @@ export default function MatchHistoryPanel() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* Matches List or Empty State */}
       {sortedMatches.length === 0 ? (
@@ -317,6 +494,8 @@ export default function MatchHistoryPanel() {
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Reverse Winner Confirmation Modal */}

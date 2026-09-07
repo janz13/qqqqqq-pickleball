@@ -36,15 +36,26 @@ export default function HistoryPage() {
         if (supabase) {
           const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
           if (data && data.state_json) {
-             setHistoryItem({
-               session: data.state_json.session,
-               players: data.state_json.players,
-               courts: data.state_json.courts,
-               matches: data.state_json.matches,
-               endedAtEpochMs: Date.now() // Approximation if missing
-             });
+            const sessionObj = data.state_json.session || {
+              id: data.id,
+              name: 'Pickleball Session',
+              joinCode: data.join_code,
+              ownerUid: data.owner_uid,
+              createdAtEpochMs: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
+              isActive: false,
+              courtsPerBatch: (data.state_json.courts || []).length || 4,
+              queueBatchesShown: 2,
+              showNextUpToPlayers: true
+            };
+            setHistoryItem({
+              session: sessionObj,
+              players: data.state_json.players || [],
+              courts: data.state_json.courts || [],
+              matches: data.state_json.matches || [],
+              endedAtEpochMs: data.state_json.endedAtEpochMs || (data.updated_at ? new Date(data.updated_at).getTime() : Date.now())
+            });
           } else {
-             console.error("Cloud fetch failed:", error);
+            console.error("Cloud fetch failed:", error);
           }
         }
       } catch(e) {
@@ -123,7 +134,7 @@ export default function HistoryPage() {
               <ArrowLeft size={20} />
             </button>
           )}
-          <h1 className="text-3xl font-bold tracking-tight">{historyItem.session.name} - Analysis</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{historyItem.session.name || 'Pickleball Session'} - Analysis</h1>
         </div>
       </header>
 
@@ -139,7 +150,9 @@ export default function HistoryPage() {
           </div>
           <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 flex flex-col gap-2">
             <div className="text-gray-500 dark:text-gray-400 flex items-center gap-2"><Clock size={18}/> Ended At</div>
-            <div className="text-lg font-bold">{new Date(historyItem.endedAtEpochMs).toLocaleTimeString()}</div>
+            <div className="text-base font-bold text-gray-900 dark:text-gray-100">
+              {new Date(historyItem.endedAtEpochMs).toLocaleDateString()} {new Date(historyItem.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
           </div>
         </div>
 

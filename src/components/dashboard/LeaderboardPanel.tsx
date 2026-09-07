@@ -1,15 +1,24 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, RefreshCw } from 'lucide-react';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { getSortedPlayers } from '@/utils/leaderboard';
 
 import { useState } from 'react';
 
 export default function LeaderboardPanel() {
-  const { players, matches, roster } = useStore();
+  const { players, matches, roster, currentUser, syncCloudRoster } = useStore();
   const [viewMode, setViewMode] = useState<'session' | 'alltime'>('session');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (currentUser && !currentUser.id.startsWith('guest_')) {
+      setIsSyncing(true);
+      await syncCloudRoster(currentUser.id);
+      setIsSyncing(false);
+    }
+  };
 
   const sourceData = viewMode === 'session' ? players : roster;
   
@@ -32,7 +41,7 @@ export default function LeaderboardPanel() {
 
   return (
     <div className="flex flex-col gap-8 w-full max-w-5xl mx-auto animate-slide-up">
-      <div className="flex justify-center mt-4">
+      <div className="flex justify-center items-center gap-3 mt-4">
         <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl inline-flex shadow-inner">
           <button
             onClick={() => setViewMode('session')}
@@ -55,6 +64,17 @@ export default function LeaderboardPanel() {
             All-Time History
           </button>
         </div>
+
+        {viewMode === 'alltime' && currentUser && !currentUser.id.startsWith('guest_') && (
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="p-2 text-gray-500 hover:text-blue-600 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm"
+            title="Refresh All-Time stats from Cloud"
+          >
+            <RefreshCw size={16} className={isSyncing ? 'animate-spin text-blue-600' : ''} />
+          </button>
+        )}
       </div>
 
       {top3.length > 0 && (
@@ -68,7 +88,9 @@ export default function LeaderboardPanel() {
                   {top3[1].photoUrl ? <img src={top3[1].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[1].name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="font-bold text-center text-sm truncate w-full">{top3[1].name}</div>
-                <div className="text-xs font-semibold text-slate-500">{viewMode === 'session' ? top3[1].sessionWins : top3[1].allTimeWins} Wins</div>
+                <div className="text-xs font-semibold text-slate-500">
+                  {viewMode === 'session' ? top3[1].sessionWins : top3[1].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[1].allTimeGamesPlayed} GP)` : ''}
+                </div>
               </div>
               <div className="w-full h-24 bg-gradient-to-t from-slate-300 to-slate-200 dark:from-slate-700 dark:to-slate-600 rounded-t-xl flex justify-center pt-3 shadow-inner">
                 <span className="text-3xl font-black text-slate-400/50">2</span>
@@ -85,7 +107,9 @@ export default function LeaderboardPanel() {
                   {top3[0].photoUrl ? <img src={top3[0].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[0].name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="font-bold text-center text-base truncate w-full">{top3[0].name}</div>
-                <div className="text-sm font-bold text-amber-600 dark:text-amber-400">{viewMode === 'session' ? top3[0].sessionWins : top3[0].allTimeWins} Wins</div>
+                <div className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                  {viewMode === 'session' ? top3[0].sessionWins : top3[0].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[0].allTimeGamesPlayed} GP)` : ''}
+                </div>
               </div>
               <div className="w-full h-32 bg-gradient-to-t from-amber-400 to-yellow-300 dark:from-amber-600 dark:to-amber-500 rounded-t-xl flex justify-center pt-3 shadow-inner">
                 <span className="text-4xl font-black text-amber-600/50 dark:text-amber-900/30">1</span>
@@ -102,7 +126,9 @@ export default function LeaderboardPanel() {
                   {top3[2].photoUrl ? <img src={top3[2].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[2].name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="font-bold text-center text-sm truncate w-full">{top3[2].name}</div>
-                <div className="text-xs font-semibold text-slate-500">{viewMode === 'session' ? top3[2].sessionWins : top3[2].allTimeWins} Wins</div>
+                <div className="text-xs font-semibold text-slate-500">
+                  {viewMode === 'session' ? top3[2].sessionWins : top3[2].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[2].allTimeGamesPlayed} GP)` : ''}
+                </div>
               </div>
               <div className="w-full h-20 bg-gradient-to-t from-orange-300 to-orange-200 dark:from-orange-800 dark:to-orange-700 rounded-t-xl flex justify-center pt-2 shadow-inner">
                 <span className="text-3xl font-black text-orange-500/50 dark:text-orange-900/30">3</span>
@@ -116,6 +142,16 @@ export default function LeaderboardPanel() {
         <div className="text-center py-16 text-slate-400 dark:text-slate-500 glass dark:glass-dark rounded-3xl border-dashed">
           <Trophy size={48} className="mx-auto mb-4 opacity-30" />
           <p className="text-lg font-medium">No matches played yet.</p>
+          {viewMode === 'alltime' && currentUser && !currentUser.id.startsWith('guest_') && (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm inline-flex items-center gap-2"
+            >
+              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              Sync Roster from Cloud
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -132,7 +168,15 @@ export default function LeaderboardPanel() {
                     #{idx + 1}
                   </div>
                   <div className="flex-1">
-                    <PlayerCard player={p} compact />
+                    <PlayerCard 
+                      player={viewMode === 'alltime' ? { 
+                        ...p, 
+                        sessionGamesPlayed: p.allTimeGamesPlayed, 
+                        sessionWins: p.allTimeWins, 
+                        sessionLosses: p.allTimeLosses 
+                      } : p} 
+                      compact 
+                    />
                   </div>
                   <div className="hidden sm:flex flex-col items-end min-w-[120px]">
                     <div className="flex items-center gap-3 w-full justify-end mb-1">

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus } from '@/types/models';
+import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer } from '@/types/models';
 import { buildNextBatches, incrementSitOuts } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 
@@ -48,6 +48,7 @@ interface StoreState {
   initializeSession: (name: string, courtsCount: number) => Session;
   swapPlayerInMatch: (matchId: string, team: Team, oldPlayerId: string, newPlayerId: string) => void;
   reverseMatchWinner: (matchId: string) => void;
+  syncCloudRoster: (userId?: string) => Promise<void>;
   
   getUpcomingBatches: () => ProposedMatch[];
   broadcastAnnouncement: (text: string) => void;
@@ -63,30 +64,36 @@ export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      setCurrentUser: (user) => set(state => {
-        const newRosters = { ...(state.rostersByOwner || {}) };
-        
-        // Save current roster to the outgoing user
-        if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
-          newRosters[state.currentUser.id] = state.roster;
-        } else if (state.roster.length > 0 && !state.currentUser) {
-          // Migration: if they had a roster before this feature, and log in, keep it for them
-          if (user && !user.id.startsWith('guest_')) {
-             newRosters[user.id] = state.roster;
+      setCurrentUser: (user) => {
+        set(state => {
+          const newRosters = { ...(state.rostersByOwner || {}) };
+          
+          // Save current roster to the outgoing user
+          if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+            newRosters[state.currentUser.id] = state.roster;
+          } else if (state.roster.length > 0 && !state.currentUser) {
+            // Migration: if they had a roster before this feature, and log in, keep it for them
+            if (user && !user.id.startsWith('guest_')) {
+               newRosters[user.id] = state.roster;
+            }
           }
-        }
 
-        let nextRoster: Player[] = [];
+          let nextRoster: Player[] = [];
+          if (user && !user.id.startsWith('guest_')) {
+             nextRoster = newRosters[user.id] || (state.roster.length > 0 && !state.currentUser ? state.roster : []);
+          }
+
+          return { 
+            currentUser: user,
+            rostersByOwner: newRosters,
+            roster: nextRoster
+          };
+        });
+
         if (user && !user.id.startsWith('guest_')) {
-           nextRoster = newRosters[user.id] || (state.roster.length > 0 && !state.currentUser ? state.roster : []);
+          get().syncCloudRoster(user.id);
         }
-
-        return { 
-          currentUser: user,
-          rostersByOwner: newRosters,
-          roster: nextRoster
-        };
-      }),
+      },
 
       sessionId: null,
       joinCode: null,
@@ -397,12 +404,18 @@ export const useStore = create<StoreState>()(
                    players: sanitizePlayers(state.players),
                    courts: state.courts,
                    matches: state.matches,
-                   session: { ...state.session, isActive: false }
+                   session: { ...state.session, isActive: false },
+                   endedAtEpochMs: Date.now()
                  };
                  supabase.from('sessions').update({ 
                    is_active: false,
-                   state_json: finalState
-                 }).eq('id', state.session!.id).then();
+                   state_json: finalState,
+                   updated_at: new Date().toISOString()
+                 }).eq('id', state.session!.id).then(() => {
+                   if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
+                     get().syncCloudRoster(state.currentUser.id);
+                   }
+                 });
               }
             }).catch(e => console.error("Failed to load supabase", e));
           } catch (e) {
@@ -419,7 +432,7 @@ export const useStore = create<StoreState>()(
             matches: state.matches,
             endedAtEpochMs: Date.now()
           };
-          const newHistory = [...state.sessionHistory, historyItem].slice(-3);
+          const newHistory = [...state.sessionHistory, historyItem].slice(-50);
           return {
             sessionHistory: newHistory,
             session: null,
@@ -566,6 +579,155 @@ export const useStore = create<StoreState>()(
         return updates;
       }),
 
+      syncCloudRoster: async (userId?: string) => {
+        const uid = userId || get().currentUser?.id;
+        if (!uid || uid.startsWith('guest_')) return;
+
+        try {
+          const { createClient } = await import('./supabase');
+          const supabase = createClient();
+          if (!supabase) return;
+
+          const { data, error } = await supabase
+            .from('sessions')
+            .select('id, is_active, state_json, updated_at')
+            .eq('owner_uid', uid)
+            .order('updated_at', { ascending: true });
+
+          if (error || !data) {
+            console.error('Failed to fetch sessions for cloud roster sync:', error);
+            return;
+          }
+
+          const playerMap = new Map<string, {
+            name: string;
+            skillLevel: number;
+            duprProfileUrl?: string | null;
+            photoUrl?: string | null;
+            allTimeWins: number;
+            allTimeLosses: number;
+            allTimeGamesPlayed: number;
+            allTimeSessionsPlayed: number;
+            lastSeenEpochMs: number;
+          }>();
+
+          for (const row of data) {
+            const state = row.state_json;
+            if (!state || !Array.isArray(state.players)) continue;
+
+            const sessionPlayers = state.players as Player[];
+            const sessionMatches = Array.isArray(state.matches) ? (state.matches as Match[]) : [];
+            const updatedAtMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+
+            const matchWinsByPlayer = new Map<string, number>();
+            const matchLossesByPlayer = new Map<string, number>();
+
+            sessionMatches.forEach(m => {
+              if (m.endedAtEpochMs && m.winner) {
+                const winners = m.winner === Team.A ? m.teamA : m.teamB;
+                const losers = m.winner === Team.A ? m.teamB : m.teamA;
+                winners.forEach(id => matchWinsByPlayer.set(id, (matchWinsByPlayer.get(id) || 0) + 1));
+                losers.forEach(id => matchLossesByPlayer.set(id, (matchLossesByPlayer.get(id) || 0) + 1));
+              }
+            });
+
+            for (const sp of sessionPlayers) {
+              const key = sp.name.trim().toLowerCase();
+              if (!key) continue;
+
+              const winsFromMatches = matchWinsByPlayer.get(sp.id);
+              const lossesFromMatches = matchLossesByPlayer.get(sp.id);
+              const wins = winsFromMatches !== undefined ? winsFromMatches : (sp.sessionWins || 0);
+              const losses = lossesFromMatches !== undefined ? lossesFromMatches : (sp.sessionLosses || 0);
+              const games = sp.sessionGamesPlayed || (wins + losses);
+
+              const existing = playerMap.get(key);
+              if (!existing) {
+                playerMap.set(key, {
+                  name: sp.name.trim(),
+                  skillLevel: sp.skillLevel || 3,
+                  duprProfileUrl: sp.duprProfileUrl ?? null,
+                  photoUrl: sp.photoUrl ?? null,
+                  allTimeWins: wins,
+                  allTimeLosses: losses,
+                  allTimeGamesPlayed: games,
+                  allTimeSessionsPlayed: 1,
+                  lastSeenEpochMs: updatedAtMs
+                });
+              } else {
+                existing.allTimeWins += wins;
+                existing.allTimeLosses += losses;
+                existing.allTimeGamesPlayed += games;
+                existing.allTimeSessionsPlayed += 1;
+                if (updatedAtMs >= existing.lastSeenEpochMs) {
+                  existing.skillLevel = sp.skillLevel || existing.skillLevel;
+                  existing.name = sp.name.trim();
+                  if (sp.duprProfileUrl !== undefined) existing.duprProfileUrl = sp.duprProfileUrl;
+                  if (sp.photoUrl !== undefined) existing.photoUrl = sp.photoUrl;
+                  existing.lastSeenEpochMs = updatedAtMs;
+                }
+              }
+            }
+          }
+
+          const aggregatedRoster: Player[] = Array.from(playerMap.values()).map(p => createPlayer({
+            id: 'r_' + Math.random().toString(36).substr(2, 9),
+            name: p.name,
+            skillLevel: p.skillLevel,
+            status: PlayerStatus.AVAILABLE,
+            queuedAtEpochMs: Date.now(),
+            joinedSessionAtEpochMs: Date.now(),
+            isLatecomer: false,
+            currentCourtId: null,
+            sessionGamesPlayed: 0,
+            sessionWins: 0,
+            sessionLosses: 0,
+            allTimeGamesPlayed: p.allTimeGamesPlayed,
+            allTimeWins: p.allTimeWins,
+            allTimeLosses: p.allTimeLosses,
+            allTimeSessionsPlayed: p.allTimeSessionsPlayed,
+            consecutiveSitOuts: 0,
+            recentPartnerIds: [],
+            recentOpponentIds: [],
+            lockedPartnerId: null,
+            duprProfileUrl: p.duprProfileUrl ?? null,
+            photoUrl: p.photoUrl ?? null
+          }));
+
+          const currentRoster = get().roster;
+          const mergedRoster: Player[] = [...aggregatedRoster];
+
+          for (const localPlayer of currentRoster) {
+            const matchIdx = mergedRoster.findIndex(
+              r => r.name.toLowerCase() === localPlayer.name.toLowerCase()
+            );
+            if (matchIdx >= 0) {
+              mergedRoster[matchIdx] = {
+                ...mergedRoster[matchIdx],
+                allTimeWins: Math.max(mergedRoster[matchIdx].allTimeWins, localPlayer.allTimeWins),
+                allTimeLosses: Math.max(mergedRoster[matchIdx].allTimeLosses, localPlayer.allTimeLosses),
+                allTimeGamesPlayed: Math.max(mergedRoster[matchIdx].allTimeGamesPlayed, localPlayer.allTimeGamesPlayed),
+                allTimeSessionsPlayed: Math.max(mergedRoster[matchIdx].allTimeSessionsPlayed, localPlayer.allTimeSessionsPlayed),
+                photoUrl: localPlayer.photoUrl || mergedRoster[matchIdx].photoUrl,
+                duprProfileUrl: localPlayer.duprProfileUrl || mergedRoster[matchIdx].duprProfileUrl
+              };
+            } else {
+              mergedRoster.push(localPlayer);
+            }
+          }
+
+          set(state => ({
+            roster: mergedRoster,
+            rostersByOwner: {
+              ...(state.rostersByOwner || {}),
+              [uid]: mergedRoster
+            }
+          }));
+        } catch (err) {
+          console.error('Error in syncCloudRoster:', err);
+        }
+      },
+
       getUpcomingBatches: () => {
         const state = get();
         const openCourts = state.courts.filter(c => c.status === CourtStatus.OPEN).length;
@@ -596,7 +758,7 @@ export const useStore = create<StoreState>()(
         const historySansPhotos = state.sessionHistory ? state.sessionHistory.map(h => ({
           ...h,
           players: sanitizePlayers(h.players)
-        })).slice(-3) : [];
+        })).slice(-50) : [];
 
         return {
           ...state,

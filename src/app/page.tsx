@@ -15,7 +15,7 @@ export default function HomePage() {
   const [roamingHistory, setRoamingHistory] = useState<any[]>([]);
   
   const router = useRouter();
-  const { currentUser, setCurrentUser, sessionHistory, session } = useStore();
+  const { currentUser, setCurrentUser, sessionHistory, session, syncCloudRoster } = useStore();
   const supabase = typeof window !== 'undefined' ? createClient() : null;
 
   useEffect(() => {
@@ -29,8 +29,11 @@ export default function HomePage() {
         .then((res: any) => {
           if (res.data) setRoamingHistory(res.data);
         });
+
+      // Hydrate all-time roster and player records from cloud
+      syncCloudRoster(currentUser.id);
     }
-  }, [currentUser, supabase]);
+  }, [currentUser, supabase, syncCloudRoster]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,50 +235,83 @@ export default function HomePage() {
                     {/* Combine local and cloud history, preferring local if duplicates exist */}
                     {Array.from(new Map(
                       [
-                        ...roamingHistory,
+                        ...roamingHistory.map(r => ({
+                          id: r.id,
+                          join_code: r.join_code,
+                          name: r.state_json?.session?.name || ('Session ' + r.join_code),
+                          updated_at: r.updated_at,
+                          created_at: r.state_json?.session?.createdAtEpochMs ? new Date(r.state_json.session.createdAtEpochMs).toISOString() : r.updated_at,
+                          is_active: r.is_active,
+                          is_local: false
+                        })),
                         ...sessionHistory.map(h => ({
                           id: h.session.id,
                           join_code: h.session.joinCode,
-                          name: h.session.name,
+                          name: h.session.name || ('Session ' + h.session.joinCode),
                           updated_at: new Date(h.endedAtEpochMs).toISOString(),
                           created_at: new Date(h.session.createdAtEpochMs).toISOString(),
+                          is_active: false,
                           is_local: true
                         }))
                       ].map(s => [s.id, s])
                     ).values())
                     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
-                    .map((session: any) => (
-                      <div key={session.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700 group">
-                        <Link 
-                          href={session.is_local ? `/history/${session.id}` : `/session/${session.join_code}`}
-                          className="flex-1 hover:opacity-70 transition-opacity"
-                        >
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold text-gray-900 dark:text-gray-100">{session.name || 'Unnamed Session'}</p>
-                            {session.is_local && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Local</span>}
+                    .map((item: any) => {
+                      const isActiveSession = item.is_active;
+                      const sessionHref = isActiveSession ? `/dashboard/${item.id}` : `/history/${item.id}`;
+
+                      return (
+                        <div key={item.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700 group hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                          <Link 
+                            href={sessionHref}
+                            className="flex-1 hover:opacity-75 transition-opacity"
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-gray-900 dark:text-gray-100">{item.name}</p>
+                              {isActiveSession ? (
+                                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse-soft">Active</span>
+                              ) : (
+                                <span className="text-[10px] bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Ended</span>
+                              )}
+                              {item.is_local && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Local</span>}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {new Date(item.updated_at || item.created_at).toLocaleDateString()} • Code: <span className="font-mono font-semibold">{item.join_code}</span>
+                            </p>
+                          </Link>
+                          
+                          <div className="flex items-center gap-1">
+                            <Link
+                              href={`/session/${item.join_code}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                              title="Open Player View"
+                            >
+                              <Users size={16} />
+                            </Link>
+
+                            <button 
+                              onClick={async () => {
+                                if (confirm(`Are you sure you want to delete session "${item.name}" permanently?`)) {
+                                  if (supabase) {
+                                    await supabase.from('sessions').delete().eq('id', item.id);
+                                    setRoamingHistory(prev => prev.filter(s => s.id !== item.id));
+                                  }
+                                  useStore.setState(state => ({
+                                    sessionHistory: state.sessionHistory.filter(h => h.session.id !== item.id)
+                                  }));
+                                }
+                              }}
+                              className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                              title="Delete Session"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
                           </div>
-                          <p className="text-xs text-gray-500">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</p>
-                        </Link>
-                        <button 
-                          onClick={async () => {
-                            if (confirm('Are you sure you want to delete this session permanently?')) {
-                              if (supabase && !session.is_local) {
-                                await supabase.from('sessions').delete().eq('id', session.id);
-                                setRoamingHistory(prev => prev.filter(s => s.id !== session.id));
-                              } else {
-                                useStore.setState(state => ({
-                                  sessionHistory: state.sessionHistory.filter(h => h.session.id !== session.id)
-                                }));
-                              }
-                            }
-                          }}
-                          className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                          title="Delete Session"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                        </button>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

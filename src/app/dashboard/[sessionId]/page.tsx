@@ -24,14 +24,16 @@ export default function DashboardPage() {
     const state = useStore.getState();
     if (!state.session || state.session.id !== sessionId) {
       // Not found or session ended, go home if not already navigating
-      // But actually, End Session navigates to history. We just shouldn't get stuck.
-      // We will let the router do its thing.
       if (!initRef.current) {
          router.push('/');
       }
       return;
     }
     initRef.current = true;
+
+    if (state.currentUser && !state.currentUser.id.startsWith('guest_') && state.roster.length === 0) {
+      state.syncCloudRoster(state.currentUser.id);
+    }
   }, [session, sessionId, router]);
 
   if (!session) {
