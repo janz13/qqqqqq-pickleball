@@ -12,7 +12,7 @@ import { Plus, Search, Upload, Download, FileUp, RefreshCw, Check } from 'lucide
  
 
 export default function RosterPanel() {
-  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, clearRoster, syncCloudRoster, currentUser } = useStore();
+  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, clearRoster, syncCloudRoster, currentUser, session } = useStore();
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerSkill, setNewPlayerSkill] = useState(3);
   const [checkInNow, setCheckInNow] = useState(true);
@@ -147,10 +147,12 @@ export default function RosterPanel() {
     });
   };
 
+  const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
+
   const handleSyncCloud = async () => {
-    if (currentUser && !currentUser.id.startsWith('guest_')) {
+    if (activeUid && !activeUid.startsWith('guest_')) {
       setIsSyncingRoster(true);
-      await syncCloudRoster(currentUser.id);
+      await syncCloudRoster(activeUid);
       setIsSyncingRoster(false);
     }
   };

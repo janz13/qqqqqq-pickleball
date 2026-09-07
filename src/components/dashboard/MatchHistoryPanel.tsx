@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function MatchHistoryPanel() {
-  const { matches, players, courts, roster, reverseMatchWinner, sessionHistory, currentUser } = useStore();
+  const { matches, players, courts, roster, reverseMatchWinner, sessionHistory, currentUser, session } = useStore();
   const [matchToReverse, setMatchToReverse] = useState<Match | null>(null);
   const [subTab, setSubTab] = useState<'current' | 'past'>('current');
   const [cloudSessions, setCloudSessions] = useState<any[]>([]);
@@ -31,7 +31,9 @@ export default function MatchHistoryPanel() {
 
   useEffect(() => {
     let isMounted = true;
-    if (subTab === 'past' && currentUser && !currentUser.id.startsWith('guest_')) {
+    const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
+
+    if (activeUid && !activeUid.startsWith('guest_')) {
       const loadPastSessions = async () => {
         try {
           const { createClient } = await import('@/lib/supabase');
@@ -41,7 +43,7 @@ export default function MatchHistoryPanel() {
             const res = await supabase
               .from('sessions')
               .select('*')
-              .eq('owner_uid', currentUser.id)
+              .eq('owner_uid', activeUid)
               .order('updated_at', { ascending: false });
             if (res.data && isMounted) {
               setCloudSessions(res.data);
@@ -58,7 +60,7 @@ export default function MatchHistoryPanel() {
     return () => {
       isMounted = false;
     };
-  }, [subTab, currentUser]);
+  }, [currentUser, session?.ownerUid]);
 
   const allPastSessions = Array.from(new Map(
     [

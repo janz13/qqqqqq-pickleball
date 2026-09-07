@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Play, Users, Shuffle, Trophy, ArrowRight, LayoutGrid, Mail, LogOut, History, ChevronRight } from 'lucide-react';
+import { Play, Users, Shuffle, Trophy, ArrowRight, LayoutGrid, Mail, LogOut, History, ChevronRight, Loader2, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
@@ -13,26 +13,42 @@ export default function HomePage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [roamingHistory, setRoamingHistory] = useState<any[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   
   const router = useRouter();
   const { currentUser, setCurrentUser, sessionHistory, session, syncCloudRoster } = useStore();
   const supabase = typeof window !== 'undefined' ? createClient() : null;
 
   useEffect(() => {
+    let isMounted = true;
     if (currentUser && supabase) {
-      // Fetch roaming history from the cloud!
-      supabase
-        .from('sessions')
-        .select('*')
-        .eq('owner_uid', currentUser.id)
-        .order('created_at', { ascending: false })
-        .then((res: any) => {
-          if (res.data) setRoamingHistory(res.data);
-        });
+      setIsLoadingSessions(true);
+      const fetchSessions = async () => {
+        try {
+          const res = await supabase
+            .from('sessions')
+            .select('*')
+            .eq('owner_uid', currentUser.id)
+            .order('updated_at', { ascending: false });
 
+          if (isMounted) {
+            if (res.data) setRoamingHistory(res.data);
+            if (res.error) console.error("Error fetching sessions:", res.error);
+          }
+        } catch (err) {
+          console.error("Failed to load sessions:", err);
+        } finally {
+          if (isMounted) setIsLoadingSessions(false);
+        }
+      };
+
+      fetchSessions();
       // Hydrate all-time roster and player records from cloud
       syncCloudRoster(currentUser.id);
     }
+    return () => {
+      isMounted = false;
+    };
   }, [currentUser, supabase, syncCloudRoster]);
 
   const handleJoin = (e: React.FormEvent) => {
@@ -58,6 +74,13 @@ export default function HomePage() {
       if (data) {
         // User exists, check password
         if (data.password === password) {
+          const currentStoreSession = useStore.getState().session;
+          if (currentStoreSession && currentStoreSession.ownerUid.startsWith('guest_')) {
+            useStore.setState({
+              session: { ...currentStoreSession, ownerUid: data.username }
+            });
+            supabase.from('sessions').update({ owner_uid: data.username }).eq('id', currentStoreSession.id);
+          }
           setCurrentUser({ email: data.username, id: data.username });
           setAuthMode('initial');
         } else {
@@ -70,6 +93,13 @@ export default function HomePage() {
           alert(`Error creating account: ${error.message}`);
         } else {
           alert("Account created successfully!");
+          const currentStoreSession = useStore.getState().session;
+          if (currentStoreSession && currentStoreSession.ownerUid.startsWith('guest_')) {
+            useStore.setState({
+              session: { ...currentStoreSession, ownerUid: uname }
+            });
+            supabase.from('sessions').update({ owner_uid: uname }).eq('id', currentStoreSession.id);
+          }
           setCurrentUser({ email: uname, id: uname });
           setAuthMode('initial');
         }
@@ -206,15 +236,24 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {session && session.isActive && (
-                <Link 
-                  href={`/dashboard/${session.id}`}
-                  className="w-full min-h-[64px] bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-sm"
-                >
-                  <Play size={22} fill="currentColor" />
-                  Resume Active Session
-                </Link>
-              )}
+              {(() => {
+                const activeSession = (session && session.isActive)
+                  ? session
+                  : roamingHistory.find(r => r.is_active);
+                
+                if (!activeSession) return null;
+                const activeName = activeSession.name || activeSession.state_json?.session?.name || 'Current';
+
+                return (
+                  <Link 
+                    href={`/dashboard/${activeSession.id}`}
+                    className="w-full min-h-[64px] bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-sm"
+                  >
+                    <Play size={22} fill="currentColor" />
+                    Resume Active Session ({activeName})
+                  </Link>
+                );
+              })()}
 
               <Link 
                 href="/dashboard/new"
@@ -224,97 +263,125 @@ export default function HomePage() {
                 Create New Session
               </Link>
 
-              {(roamingHistory.length > 0 || sessionHistory.length > 0) && (
-                <div className="pt-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                      <History size={16} /> My Sessions
-                    </h3>
-                  </div>
-                  <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-2">
-                    {/* Combine local and cloud history, preferring local if duplicates exist */}
-                    {Array.from(new Map(
-                      [
-                        ...roamingHistory.map(r => ({
-                          id: r.id,
-                          join_code: r.join_code,
-                          name: r.state_json?.session?.name || ('Session ' + r.join_code),
-                          updated_at: r.updated_at,
-                          created_at: r.state_json?.session?.createdAtEpochMs ? new Date(r.state_json.session.createdAtEpochMs).toISOString() : r.updated_at,
-                          is_active: r.is_active,
-                          is_local: false
-                        })),
-                        ...sessionHistory.map(h => ({
-                          id: h.session.id,
-                          join_code: h.session.joinCode,
-                          name: h.session.name || ('Session ' + h.session.joinCode),
-                          updated_at: new Date(h.endedAtEpochMs).toISOString(),
-                          created_at: new Date(h.session.createdAtEpochMs).toISOString(),
-                          is_active: false,
-                          is_local: true
-                        }))
-                      ].map(s => [s.id, s])
-                    ).values())
-                    .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
-                    .map((item: any) => {
-                      const isActiveSession = item.is_active;
-                      const sessionHref = isActiveSession ? `/dashboard/${item.id}` : `/history/${item.id}`;
+              {(() => {
+                const combinedSessions = Array.from(new Map(
+                  [
+                    ...roamingHistory.map(r => ({
+                      id: r.id,
+                      join_code: r.join_code,
+                      name: r.state_json?.session?.name || ('Session ' + r.join_code),
+                      updated_at: r.updated_at,
+                      created_at: r.state_json?.session?.createdAtEpochMs ? new Date(r.state_json.session.createdAtEpochMs).toISOString() : r.updated_at,
+                      is_active: r.is_active,
+                      matches_count: r.state_json?.matches?.length || 0,
+                      players_count: r.state_json?.players?.length || 0,
+                      is_local: false
+                    })),
+                    ...sessionHistory.map(h => ({
+                      id: h.session.id,
+                      join_code: h.session.joinCode,
+                      name: h.session.name || ('Session ' + h.session.joinCode),
+                      updated_at: new Date(h.endedAtEpochMs).toISOString(),
+                      created_at: new Date(h.session.createdAtEpochMs).toISOString(),
+                      is_active: false,
+                      matches_count: h.matches?.length || 0,
+                      players_count: h.players?.length || 0,
+                      is_local: true
+                    }))
+                  ].map(s => [s.id, s])
+                ).values())
+                .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
 
-                      return (
-                        <div key={item.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700 group hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                          <Link 
-                            href={sessionHref}
-                            className="flex-1 hover:opacity-75 transition-opacity"
-                          >
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-bold text-gray-900 dark:text-gray-100">{item.name}</p>
-                              {isActiveSession ? (
-                                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse-soft">Active</span>
-                              ) : (
-                                <span className="text-[10px] bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Ended</span>
-                              )}
-                              {item.is_local && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Local</span>}
+                return (
+                  <div className="pt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <History size={16} /> My Sessions ({combinedSessions.length})
+                      </h3>
+                      {isLoadingSessions && <Loader2 size={16} className="animate-spin text-blue-500" />}
+                    </div>
+
+                    {isLoadingSessions && roamingHistory.length === 0 ? (
+                      <div className="py-6 flex flex-col items-center justify-center gap-2 text-gray-500 text-sm bg-gray-50 dark:bg-gray-800 rounded-2xl">
+                        <Loader2 size={22} className="animate-spin text-blue-500" />
+                        <span>Loading your past sessions...</span>
+                      </div>
+                    ) : combinedSessions.length === 0 ? (
+                      <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-2xl text-center border border-gray-200 dark:border-gray-700">
+                        <p className="font-semibold text-gray-700 dark:text-gray-300">No sessions yet</p>
+                        <p className="text-xs text-gray-500 mt-1">Start your first session above to track games, players, and all-time stats.</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-2">
+                        {combinedSessions.map((item: any) => {
+                          const isActiveSession = item.is_active;
+                          const sessionHref = isActiveSession ? `/dashboard/${item.id}` : `/history/${item.id}`;
+
+                          return (
+                            <div key={item.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700 group hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                              <Link 
+                                href={sessionHref}
+                                className="flex-1 hover:opacity-75 transition-opacity"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-bold text-gray-900 dark:text-gray-100">{item.name}</p>
+                                  {isActiveSession ? (
+                                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse-soft">Active</span>
+                                  ) : (
+                                    <span className="text-[10px] bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Ended</span>
+                                  )}
+                                  {item.is_local && <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Local</span>}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {new Date(item.updated_at || item.created_at).toLocaleDateString()} • Code: <span className="font-mono font-semibold">{item.join_code}</span> • {item.matches_count} matches • {item.players_count} players
+                                </p>
+                              </Link>
+                              
+                              <div className="flex items-center gap-1">
+                                <Link
+                                  href={`/session/${item.join_code}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                  title="Open Player View"
+                                >
+                                  <Users size={16} />
+                                </Link>
+
+                                <button 
+                                  onClick={async () => {
+                                    if (confirm(`Are you sure you want to delete session "${item.name}" permanently?`)) {
+                                      if (supabase) {
+                                        await supabase.from('sessions').delete().eq('id', item.id);
+                                        setRoamingHistory(prev => prev.filter(s => s.id !== item.id));
+                                      }
+                                      useStore.setState(state => ({
+                                        sessionHistory: state.sessionHistory.filter(h => h.session.id !== item.id),
+                                        ...(state.session?.id === item.id ? {
+                                          session: null,
+                                          sessionId: null,
+                                          joinCode: null,
+                                          players: [],
+                                          courts: [],
+                                          matches: []
+                                        } : {})
+                                      }));
+                                    }
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                  title="Delete Session"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              {new Date(item.updated_at || item.created_at).toLocaleDateString()} • Code: <span className="font-mono font-semibold">{item.join_code}</span>
-                            </p>
-                          </Link>
-                          
-                          <div className="flex items-center gap-1">
-                            <Link
-                              href={`/session/${item.join_code}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                              title="Open Player View"
-                            >
-                              <Users size={16} />
-                            </Link>
-
-                            <button 
-                              onClick={async () => {
-                                if (confirm(`Are you sure you want to delete session "${item.name}" permanently?`)) {
-                                  if (supabase) {
-                                    await supabase.from('sessions').delete().eq('id', item.id);
-                                    setRoamingHistory(prev => prev.filter(s => s.id !== item.id));
-                                  }
-                                  useStore.setState(state => ({
-                                    sessionHistory: state.sessionHistory.filter(h => h.session.id !== item.id)
-                                  }));
-                                }
-                              }}
-                              className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                              title="Delete Session"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>

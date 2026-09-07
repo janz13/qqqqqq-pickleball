@@ -8,14 +8,16 @@ import { getSortedPlayers } from '@/utils/leaderboard';
 import { useState } from 'react';
 
 export default function LeaderboardPanel() {
-  const { players, matches, roster, currentUser, syncCloudRoster } = useStore();
+  const { players, matches, roster, currentUser, session, syncCloudRoster } = useStore();
   const [viewMode, setViewMode] = useState<'session' | 'alltime'>('session');
   const [isSyncing, setIsSyncing] = useState(false);
 
+  const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
+
   const handleSync = async () => {
-    if (currentUser && !currentUser.id.startsWith('guest_')) {
+    if (activeUid && !activeUid.startsWith('guest_')) {
       setIsSyncing(true);
-      await syncCloudRoster(currentUser.id);
+      await syncCloudRoster(activeUid);
       setIsSyncing(false);
     }
   };
