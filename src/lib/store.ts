@@ -83,10 +83,19 @@ export const useStore = create<StoreState>()(
              nextRoster = newRosters[user.id] || (state.roster.length > 0 && !state.currentUser ? state.roster : []);
           }
 
+          const isDifferentOwner = state.session && state.session.ownerUid !== user?.id;
           return { 
             currentUser: user,
             rostersByOwner: newRosters,
-            roster: nextRoster
+            roster: nextRoster,
+            ...(isDifferentOwner ? {
+              session: null,
+              sessionId: null,
+              joinCode: null,
+              players: [],
+              courts: [],
+              matches: []
+            } : {})
           };
         });
 

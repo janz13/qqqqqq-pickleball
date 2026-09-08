@@ -74,13 +74,6 @@ export default function HomePage() {
       if (data) {
         // User exists, check password
         if (data.password === password) {
-          const currentStoreSession = useStore.getState().session;
-          if (currentStoreSession && currentStoreSession.ownerUid.startsWith('guest_')) {
-            useStore.setState({
-              session: { ...currentStoreSession, ownerUid: data.username }
-            });
-            supabase.from('sessions').update({ owner_uid: data.username }).eq('id', currentStoreSession.id);
-          }
           setCurrentUser({ email: data.username, id: data.username });
           setAuthMode('initial');
         } else {
@@ -93,13 +86,6 @@ export default function HomePage() {
           alert(`Error creating account: ${error.message}`);
         } else {
           alert("Account created successfully!");
-          const currentStoreSession = useStore.getState().session;
-          if (currentStoreSession && currentStoreSession.ownerUid.startsWith('guest_')) {
-            useStore.setState({
-              session: { ...currentStoreSession, ownerUid: uname }
-            });
-            supabase.from('sessions').update({ owner_uid: uname }).eq('id', currentStoreSession.id);
-          }
           setCurrentUser({ email: uname, id: uname });
           setAuthMode('initial');
         }
@@ -237,9 +223,9 @@ export default function HomePage() {
               </div>
 
               {(() => {
-                const activeSession = (session && session.isActive)
+                const activeSession = (session && session.isActive && session.ownerUid === currentUser.id)
                   ? session
-                  : roamingHistory.find(r => r.is_active);
+                  : roamingHistory.find(r => r.is_active && r.owner_uid === currentUser.id);
                 
                 if (!activeSession) return null;
                 const activeName = activeSession.name || activeSession.state_json?.session?.name || 'Current';
@@ -266,28 +252,32 @@ export default function HomePage() {
               {(() => {
                 const combinedSessions = Array.from(new Map(
                   [
-                    ...roamingHistory.map(r => ({
-                      id: r.id,
-                      join_code: r.join_code,
-                      name: r.state_json?.session?.name || ('Session ' + r.join_code),
-                      updated_at: r.updated_at,
-                      created_at: r.state_json?.session?.createdAtEpochMs ? new Date(r.state_json.session.createdAtEpochMs).toISOString() : r.updated_at,
-                      is_active: r.is_active,
-                      matches_count: r.state_json?.matches?.length || 0,
-                      players_count: r.state_json?.players?.length || 0,
-                      is_local: false
-                    })),
-                    ...sessionHistory.map(h => ({
-                      id: h.session.id,
-                      join_code: h.session.joinCode,
-                      name: h.session.name || ('Session ' + h.session.joinCode),
-                      updated_at: new Date(h.endedAtEpochMs).toISOString(),
-                      created_at: new Date(h.session.createdAtEpochMs).toISOString(),
-                      is_active: false,
-                      matches_count: h.matches?.length || 0,
-                      players_count: h.players?.length || 0,
-                      is_local: true
-                    }))
+                    ...roamingHistory
+                      .filter(r => r.owner_uid === currentUser.id)
+                      .map(r => ({
+                        id: r.id,
+                        join_code: r.join_code,
+                        name: r.state_json?.session?.name || ('Session ' + r.join_code),
+                        updated_at: r.updated_at,
+                        created_at: r.state_json?.session?.createdAtEpochMs ? new Date(r.state_json.session.createdAtEpochMs).toISOString() : r.updated_at,
+                        is_active: r.is_active,
+                        matches_count: r.state_json?.matches?.length || 0,
+                        players_count: r.state_json?.players?.length || 0,
+                        is_local: false
+                      })),
+                    ...sessionHistory
+                      .filter(h => h.session && h.session.ownerUid === currentUser.id)
+                      .map(h => ({
+                        id: h.session.id,
+                        join_code: h.session.joinCode,
+                        name: h.session.name || ('Session ' + h.session.joinCode),
+                        updated_at: new Date(h.endedAtEpochMs).toISOString(),
+                        created_at: new Date(h.session.createdAtEpochMs).toISOString(),
+                        is_active: false,
+                        matches_count: h.matches?.length || 0,
+                        players_count: h.players?.length || 0,
+                        is_local: true
+                      }))
                   ].map(s => [s.id, s])
                 ).values())
                 .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());

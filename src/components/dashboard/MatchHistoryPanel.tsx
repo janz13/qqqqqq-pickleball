@@ -29,9 +29,10 @@ export default function MatchHistoryPanel() {
   const [cloudSessions, setCloudSessions] = useState<any[]>([]);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
 
+  const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
+
   useEffect(() => {
     let isMounted = true;
-    const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
 
     if (activeUid && !activeUid.startsWith('guest_')) {
       const loadPastSessions = async () => {
@@ -64,26 +65,30 @@ export default function MatchHistoryPanel() {
 
   const allPastSessions = Array.from(new Map(
     [
-      ...cloudSessions.map(r => ({
-        id: r.id,
-        joinCode: r.join_code,
-        name: r.state_json?.session?.name || ('Session ' + r.join_code),
-        updatedAt: r.updated_at,
-        isActive: r.is_active,
-        matchesCount: r.state_json?.matches?.length || 0,
-        playersCount: r.state_json?.players?.length || 0,
-        isLocal: false
-      })),
-      ...sessionHistory.map(h => ({
-        id: h.session.id,
-        joinCode: h.session.joinCode,
-        name: h.session.name || ('Session ' + h.session.joinCode),
-        updatedAt: new Date(h.endedAtEpochMs).toISOString(),
-        isActive: false,
-        matchesCount: h.matches.length,
-        playersCount: h.players.length,
-        isLocal: true
-      }))
+      ...cloudSessions
+        .filter(r => r.owner_uid === activeUid)
+        .map(r => ({
+          id: r.id,
+          joinCode: r.join_code,
+          name: r.state_json?.session?.name || ('Session ' + r.join_code),
+          updatedAt: r.updated_at,
+          isActive: r.is_active,
+          matchesCount: r.state_json?.matches?.length || 0,
+          playersCount: r.state_json?.players?.length || 0,
+          isLocal: false
+        })),
+      ...sessionHistory
+        .filter(h => h.session && h.session.ownerUid === activeUid)
+        .map(h => ({
+          id: h.session.id,
+          joinCode: h.session.joinCode,
+          name: h.session.name || ('Session ' + h.session.joinCode),
+          updatedAt: new Date(h.endedAtEpochMs).toISOString(),
+          isActive: false,
+          matchesCount: h.matches.length,
+          playersCount: h.players.length,
+          isLocal: true
+        }))
     ].map(s => [s.id, s])
   ).values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
