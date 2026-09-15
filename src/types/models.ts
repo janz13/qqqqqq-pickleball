@@ -72,6 +72,7 @@ export enum Team {
 export interface Match {
   id: string;
   courtId: string;
+  courtLabel?: string;
   teamA: string[]; // player IDs
   teamB: string[]; // player IDs
   startedAtEpochMs: number;

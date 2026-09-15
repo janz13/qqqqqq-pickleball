@@ -73,7 +73,7 @@ export default function PlayerMonitorPage() {
        // Initial fetch with case-insensitive match
        const { data } = await supabase
          .from('sessions')
-         .select('id, state_json, is_active, updated_at')
+         .select('id, state_json, is_active, updated_at, join_code')
          .ilike('join_code', code)
          .single();
        if (data && isMounted) {
@@ -86,13 +86,14 @@ export default function PlayerMonitorPage() {
          setIsLoading(false);
        }
        
-       // Subscribe to realtime changes
-       channel = supabase.channel(`player-view-${code}`)
+       // Subscribe to realtime changes using exact canonical code
+       const canonicalCode = data?.join_code || code;
+       channel = supabase.channel(`player-view-${canonicalCode}`)
          .on('postgres_changes', { 
            event: '*', 
            schema: 'public', 
            table: 'sessions', 
-           filter: `join_code=eq.${code}` 
+           filter: `join_code=eq.${canonicalCode}` 
          }, (payload: any) => {
            const newData = payload.new as any;
            if (newData && isMounted) {
@@ -276,17 +277,20 @@ export default function PlayerMonitorPage() {
       return a.queuedAtEpochMs - b.queuedAtEpochMs;
     });
 
-  // Calculate upcoming batches for player view
+  // Calculate upcoming batches for player view:
+  // If courts are open, calculate for available courts.
+  // If all courts are full, preview the on-deck match for waiting players!
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
-  const upcomingBatches = openCourtsCount > 0 
-    ? buildNextBatches(players, openCourtsCount, session?.matchingMode || 'balanced').map(b => pairFour(b))
+  const batchesNeeded = openCourtsCount > 0 ? openCourtsCount : (session?.queueBatchesShown || 1);
+  const upcomingBatches = queuedPlayers.length >= 4 
+    ? buildNextBatches(players, batchesNeeded, session?.matchingMode || 'balanced').map(b => pairFour(b))
     : [];
 
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
 
-  // Calculate matches for Games tab
-  const completedMatches = matches.filter(m => m.endedAtEpochMs !== null);
-  const inProgressMatches = matches.filter(m => m.endedAtEpochMs === null);
+  // Calculate matches for Games tab (loose check != null so undefined never breaks)
+  const completedMatches = matches.filter(m => m.endedAtEpochMs != null);
+  const inProgressMatches = matches.filter(m => m.endedAtEpochMs == null);
   const sortedCompletedMatches = [...completedMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
   );
@@ -295,6 +299,10 @@ export default function PlayerMonitorPage() {
   [...matches]
     .sort((a, b) => a.startedAtEpochMs - b.startedAtEpochMs)
     .forEach((m, idx) => matchNumberMap.set(m.id, idx + 1));
+
+  const myInProgressMatches = selectedPlayerId
+    ? inProgressMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
+    : [];
 
   const filteredCompletedMatches = gamesFilter === 'mine' && selectedPlayerId
     ? sortedCompletedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
@@ -342,6 +350,11 @@ export default function PlayerMonitorPage() {
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
             <Swords size={18} /> Games ({completedMatches.length})
+            {inProgressMatches.length > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-extrabold rounded-full bg-emerald-500 text-white animate-pulse">
+                {inProgressMatches.length} Live
+              </span>
+            )}
           </button>
           <button 
             onClick={() => setActiveTab('leaderboards')}
@@ -413,9 +426,14 @@ export default function PlayerMonitorPage() {
           {/* Next Up Section */}
           {(session.showNextUpToPlayers ?? true) && upcomingBatches.length > 0 && (
             <div className="lg:col-span-3 space-y-4 mt-4">
-              <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
+              <h2 className="text-2xl font-black tracking-tight flex items-center gap-3 flex-wrap">
                 <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>
                 Next Up
+                {openCourtsCount === 0 && (
+                  <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                    On Deck (Next Court Available)
+                  </span>
+                )}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {upcomingBatches.map((batch, idx) => (
@@ -490,6 +508,7 @@ export default function PlayerMonitorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {inProgressMatches.map(m => {
                     const court = courts.find(c => c.id === m.courtId);
+                    const courtName = m.courtLabel || court?.label || 'Court';
                     const teamAPlayers = m.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
                     const teamBPlayers = m.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
                     const isMyMatch = selectedPlayerId && (m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId));
@@ -498,7 +517,7 @@ export default function PlayerMonitorPage() {
                       <div key={m.id} className={`bg-slate-800/80 rounded-2xl p-4 border ${isMyMatch ? 'border-blue-500 shadow-md shadow-blue-500/10' : 'border-slate-700'}`}>
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                            {court?.label || 'Court'}
+                            {courtName}
                           </span>
                           <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -521,11 +540,54 @@ export default function PlayerMonitorPage() {
               </div>
             )}
 
+            {/* In-Progress Live Games for My Games */}
+            {gamesFilter === 'mine' && myInProgressMatches.length > 0 && (
+              <div className="mb-6 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Your Current Live Match
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {myInProgressMatches.map(m => {
+                    const court = courts.find(c => c.id === m.courtId);
+                    const courtName = m.courtLabel || court?.label || 'Court';
+                    const teamAPlayers = m.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
+                    const teamBPlayers = m.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
+
+                    return (
+                      <div key={m.id} className="bg-blue-950/40 rounded-2xl p-4 border border-blue-500 shadow-md shadow-blue-500/10">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                            {courtName}
+                          </span>
+                          <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Playing Now
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <div className="flex-1 font-semibold text-slate-200">
+                            {teamAPlayers.map(p => p?.name).join(' & ')}
+                          </div>
+                          <span className="text-xs font-bold text-slate-500">VS</span>
+                          <div className="flex-1 font-semibold text-slate-200 text-right">
+                            {teamBPlayers.map(p => p?.name).join(' & ')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {filteredCompletedMatches.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+              <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                 <Swords size={48} className="mb-4 opacity-20" />
                 <p className="font-medium text-base">
-                  {gamesFilter === 'mine' ? "You haven't played any completed matches yet" : "No matches completed yet"}
+                  {gamesFilter === 'mine' 
+                    ? (myInProgressMatches.length > 0 ? "No completed matches yet. Your live match is shown above." : "You haven't played any completed matches yet") 
+                    : "No matches completed yet"}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">Finished games will show up here automatically</p>
               </div>
@@ -534,6 +596,7 @@ export default function PlayerMonitorPage() {
                 {filteredCompletedMatches.map((match) => {
                   const matchNumber = matchNumberMap.get(match.id) ?? 1;
                   const court = courts.find(c => c.id === match.courtId);
+                  const courtName = match.courtLabel || court?.label || 'Court';
                   const teamAPlayers = match.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
                   const teamBPlayers = match.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
                   const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
@@ -556,7 +619,7 @@ export default function PlayerMonitorPage() {
                             Match #{matchNumber}
                           </span>
                           <span className="text-slate-400 font-medium">
-                            {court?.label || 'Court'}
+                            {courtName}
                           </span>
                           {isMyMatch && (
                             <span className={`px-2 py-0.5 rounded font-bold ${

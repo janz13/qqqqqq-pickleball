@@ -51,7 +51,7 @@ export default function TVDisplayPage() {
 
       const { data } = await supabase
         .from('sessions')
-        .select('state_json, is_active, updated_at')
+        .select('state_json, is_active, updated_at, join_code')
         .ilike('join_code', code)
         .maybeSingle();
 
@@ -59,12 +59,13 @@ export default function TVDisplayPage() {
         applyCloudState(data.state_json, data.updated_at);
       }
 
-      channel = supabase.channel(`tv-view-${code}`)
+      const canonicalCode = data?.join_code || code;
+      channel = supabase.channel(`tv-view-${canonicalCode}`)
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
           table: 'sessions',
-          filter: `join_code=eq.${code}`
+          filter: `join_code=eq.${canonicalCode}`
         }, (payload: any) => {
           const newData = payload.new as any;
           if (newData?.state_json && isMounted) {
@@ -138,7 +139,7 @@ export default function TVDisplayPage() {
         <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-max overflow-y-auto pr-2 pb-6 custom-scrollbar">
           {courts.map(court => (
             <div key={court.id} className="transform scale-100 origin-top">
-              <CourtCard court={court} />
+              <CourtCard court={court} readOnly={true} />
             </div>
           ))}
         </div>

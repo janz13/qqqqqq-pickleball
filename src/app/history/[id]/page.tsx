@@ -294,6 +294,7 @@ export default function HistoryPage() {
                 {filteredMatches.map((match, idx) => {
                   const matchNumber = matchNumberMap.get(match.id) ?? (idx + 1);
                   const court = historyItem.courts.find(c => c.id === match.courtId);
+                  const courtName = match.courtLabel || court?.label || 'Court';
                   const teamAPlayers = match.teamA.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
                   const teamBPlayers = match.teamB.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
                   const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
@@ -328,7 +329,7 @@ export default function HistoryPage() {
                             Match #{matchNumber}
                           </span>
                           <span className="font-semibold text-gray-700 dark:text-gray-300">
-                            {court?.label || 'Court'}
+                            {courtName}
                           </span>
                           {isMyMatch && (
                             <span className={`px-2 py-0.5 rounded-md font-bold ${

@@ -334,9 +334,11 @@ export const useStore = create<StoreState>()(
 
       startBatch: (batch, courtId) => set((state) => {
         const matchId = 'm_' + Math.random().toString(36).substr(2, 9);
+        const targetCourt = state.courts.find(c => c.id === courtId);
         const newMatch: Match = {
           id: matchId,
           courtId,
+          courtLabel: targetCourt?.label || 'Court',
           teamA: batch.teamA.map(p => p.id),
           teamB: batch.teamB.map(p => p.id),
           startedAtEpochMs: Date.now(),

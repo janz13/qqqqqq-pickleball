@@ -92,8 +92,8 @@ export default function MatchHistoryPanel() {
     ].map(s => [s.id, s])
   ).values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  // Filter completed matches (where endedAtEpochMs is not null)
-  const completedMatches = matches.filter(m => m.endedAtEpochMs !== null);
+  // Filter completed matches (where endedAtEpochMs is not null/undefined)
+  const completedMatches = matches.filter(m => m.endedAtEpochMs != null);
 
   // Sort from most recent to oldest
   const sortedMatches = [...completedMatches].sort(
@@ -131,7 +131,8 @@ export default function MatchHistoryPanel() {
   };
 
   // Helper to get court label
-  const getCourtLabel = (courtId: string): string => {
+  const getCourtLabel = (courtId: string, match?: Match): string => {
+    if (match?.courtLabel) return match.courtLabel;
     const court = courts.find(c => c.id === courtId);
     return court ? court.label : 'Court';
   };
@@ -357,7 +358,7 @@ export default function MatchHistoryPanel() {
         <div className="flex flex-col gap-4">
           {sortedMatches.map((match) => {
             const matchNumber = matchNumberMap.get(match.id) ?? 1;
-            const courtLabel = getCourtLabel(match.courtId);
+            const courtLabel = getCourtLabel(match.courtId, match);
             const teamAPlayers = match.teamA.map(id => getPlayer(id));
             const teamBPlayers = match.teamB.map(id => getPlayer(id));
             const isWinnerA = match.winner === Team.A;
