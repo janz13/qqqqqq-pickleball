@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { Court, CourtStatus, Team, Player, PlayerStatus } from '@/types/models';
-import { Clock, Trash2, AlertCircle, CheckCircle, Repeat } from 'lucide-react';
+import { Clock, Trash2, AlertCircle, CheckCircle, Repeat, Pencil, Check, X } from 'lucide-react';
 import { PlayerCard } from './PlayerCard';
 import { useTTS } from '@/hooks/useTTS';
 
@@ -12,6 +12,32 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
   const tts = useTTS();
   const [now, setNow] = useState(() => Date.now());
   const [swappingPlayerId, setSwappingPlayerId] = useState<string | null>(null);
+  const [isEditingLabel, setIsEditingLabel] = useState(false);
+  const [editedLabel, setEditedLabel] = useState(court.label);
+
+  useEffect(() => {
+    setEditedLabel(court.label);
+  }, [court.label]);
+
+  const handleSaveLabel = () => {
+    const trimmed = editedLabel.trim();
+    if (trimmed && trimmed !== court.label) {
+      updateCourt({ ...court, label: trimmed });
+    } else {
+      setEditedLabel(court.label);
+    }
+    setIsEditingLabel(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveLabel();
+    } else if (e.key === 'Escape') {
+      setEditedLabel(court.label);
+      setIsEditingLabel(false);
+    }
+  };
 
   const match = court.currentMatchId ? matches.find(m => m.id === court.currentMatchId) : null;
   const teamA = match ? match.teamA.map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
@@ -51,8 +77,57 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
   return (
     <div className="flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-all duration-200">
       <div className={`flex items-center justify-between p-4 ${headerGradient}`}>
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold tracking-tight text-lg">{court.label}</h3>
+        <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
+          {isEditingLabel && !readOnly ? (
+            <div className="flex items-center gap-1.5 flex-1" onClick={e => e.stopPropagation()}>
+              <input
+                type="text"
+                value={editedLabel}
+                onChange={e => setEditedLabel(e.target.value)}
+                onKeyDown={handleKeyDown}
+                autoFocus
+                className="w-full px-2.5 py-1 text-sm font-bold rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
+                placeholder="Court Name"
+                maxLength={30}
+              />
+              <button
+                onClick={handleSaveLabel}
+                className="p-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shrink-0 shadow-sm"
+                title="Save court name"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  setEditedLabel(court.label);
+                  setIsEditingLabel(false);
+                }}
+                className="p-1 rounded-md bg-gray-500/50 hover:bg-gray-600/60 text-white transition-colors shrink-0"
+                title="Cancel"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0 group">
+              <h3 
+                className={`font-bold tracking-tight text-lg truncate ${!readOnly ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                onClick={() => !readOnly && setIsEditingLabel(true)}
+                title={!readOnly ? "Click to rename court" : undefined}
+              >
+                {court.label}
+              </h3>
+              {!readOnly && (
+                <button
+                  onClick={() => setIsEditingLabel(true)}
+                  className="p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-all text-current shrink-0"
+                  title="Edit Court Name"
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {court.status === CourtStatus.IN_PROGRESS && (
           <div className="flex items-center gap-2">

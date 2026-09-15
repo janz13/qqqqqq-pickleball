@@ -26,6 +26,8 @@ export default function CourtsPanel() {
   const engineBatches = getUpcomingBatches();
   const [localBatches, setLocalBatches] = useState<ProposedMatch[]>([]);
   const [swappingPlayer, setSwappingPlayer] = useState<{batchIndex: number, isTeamA: boolean, playerId: string} | null>(null);
+  const [showAddCourtModal, setShowAddCourtModal] = useState(false);
+  const [newCourtName, setNewCourtName] = useState('');
 
   useEffect(() => {
     setTimeout(() => setLocalBatches(engineBatches), 0);
@@ -48,13 +50,30 @@ export default function CourtsPanel() {
     setSwappingPlayer(null);
   };
 
-  const handleAddCourt = () => {
+  const nextCourtNumber = (() => {
+    const maxCourtNum = courts.reduce((max, c) => {
+      const m = c.label.match(/Court (\d+)/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    return maxCourtNum + 1;
+  })();
+
+  const handleOpenAddCourt = () => {
+    setNewCourtName(`Court ${nextCourtNumber}`);
+    setShowAddCourtModal(true);
+  };
+
+  const handleConfirmAddCourt = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newCourtName.trim();
     addCourt({
       id: 'c_' + Math.random().toString(36).substr(2, 9),
-      label: `Court ${courts.length + 1}`, // Will be overwritten in store correctly
+      label: trimmed || `Court ${nextCourtNumber}`,
       status: CourtStatus.OPEN,
       currentMatchId: null
     });
+    setNewCourtName('');
+    setShowAddCourtModal(false);
   };
 
   const handleSendToCourt = (batch: ProposedMatch, targetCourt: { id: string, label: string }) => {
@@ -161,7 +180,7 @@ export default function CourtsPanel() {
             ))}
             
             <button
-              onClick={handleAddCourt}
+              onClick={handleOpenAddCourt}
               className="flex flex-col items-center justify-center min-h-[220px] rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/20 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 text-gray-500 dark:text-gray-400 group"
             >
               <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center group-hover:scale-110 transition-transform duration-200 mb-3">
@@ -225,6 +244,54 @@ export default function CourtsPanel() {
                 ));
               })()}
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {showAddCourtModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddCourtModal(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Add New Court</h3>
+              <button onClick={() => setShowAddCourtModal(false)} className="p-1 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleConfirmAddCourt} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Court Name
+                </label>
+                <input
+                  type="text"
+                  value={newCourtName}
+                  onChange={e => setNewCourtName(e.target.value)}
+                  placeholder={`e.g. Center Court, Stadium, Court ${nextCourtNumber}`}
+                  autoFocus
+                  required
+                  maxLength={30}
+                  className="w-full px-4 py-3 text-base font-bold rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
+                />
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Name it whatever you like (e.g. Court A, Stadium, Center Court).
+                </p>
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCourtModal(false)}
+                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-xl text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm"
+                >
+                  Add Court
+                </button>
+              </div>
+            </form>
           </div>
         </div>,
         document.body

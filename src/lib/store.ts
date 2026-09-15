@@ -45,7 +45,7 @@ interface StoreState {
   sessionHistory: {session: Session, players: Player[], courts: Court[], matches: Match[], endedAtEpochMs: number}[];
   endSession: () => void;
   clearHistory: () => void;
-  initializeSession: (name: string, courtsCount: number) => Session;
+  initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
   swapPlayerInMatch: (matchId: string, team: Team, oldPlayerId: string, newPlayerId: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
@@ -210,11 +210,15 @@ export const useStore = create<StoreState>()(
       }),
       
       addCourt: (court) => set((state) => {
-        const maxCourtNum = state.courts.reduce((max, c) => {
-          const m = c.label.match(/Court (\d+)/);
-          return m ? Math.max(max, parseInt(m[1], 10)) : max;
-        }, 0);
-        return { courts: [...state.courts, { ...court, label: `Court ${maxCourtNum + 1}` }] };
+        let label = court.label?.trim();
+        if (!label) {
+          const maxCourtNum = state.courts.reduce((max, c) => {
+            const m = c.label.match(/Court (\d+)/);
+            return m ? Math.max(max, parseInt(m[1], 10)) : max;
+          }, 0);
+          label = `Court ${maxCourtNum + 1}`;
+        }
+        return { courts: [...state.courts, { ...court, label }] };
       }),
       updateCourt: (court) => set((state) => ({ courts: state.courts.map(c => c.id === court.id ? court : c) })),
       removeCourt: (id) => set((state) => {
@@ -456,7 +460,7 @@ export const useStore = create<StoreState>()(
 
       clearHistory: () => set({ sessionHistory: [] }),
 
-      initializeSession: (name, courtsCount) => {
+      initializeSession: (name, courtsCount, customCourtLabels) => {
         const state = get();
         const sessionId = 's_' + Date.now().toString(36);
         const joinCode = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -475,7 +479,7 @@ export const useStore = create<StoreState>()(
 
         const initialCourts: Court[] = Array.from({ length: courtsCount }).map((_, i) => ({
           id: `c_${i + 1}`,
-          label: `Court ${i + 1}`,
+          label: customCourtLabels?.[i]?.trim() || `Court ${i + 1}`,
           status: CourtStatus.OPEN,
           currentMatchId: null
         }));

@@ -10,15 +10,30 @@ export default function NewSessionPage() {
   const [name, setName] = useState('Weekend Open Play');
   const [courtsCount, setCourtsCount] = useState(4);
   const [matchingMode, setMatchingMode] = useState<'balanced' | 'competitive'>('balanced');
+  const [courtNames, setCourtNames] = useState<string[]>(['Court 1', 'Court 2', 'Court 3', 'Court 4']);
+  const [showCustomNames, setShowCustomNames] = useState(false);
   const { initializeSession, updateSession, currentUser } = useStore();
 
   useEffect(() => {
     if (!currentUser) router.push('/');
   }, [currentUser, router]);
 
+  useEffect(() => {
+    setCourtNames(prev => {
+      const next = [...prev];
+      while (next.length < courtsCount) {
+        next.push(`Court ${next.length + 1}`);
+      }
+      return next.slice(0, courtsCount);
+    });
+  }, [courtsCount]);
+
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
-    const newSession = initializeSession(name, courtsCount);
+    const finalLabels = showCustomNames 
+      ? courtNames.map((cn, i) => cn.trim() || `Court ${i + 1}`)
+      : undefined;
+    const newSession = initializeSession(name, courtsCount, finalLabels);
     updateSession(newSession.id, { matchingMode });
     router.push(`/dashboard/${newSession.id}`);
   };
@@ -75,6 +90,43 @@ export default function NewSessionPage() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Court Names (Optional)
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowCustomNames(!showCustomNames)}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {showCustomNames ? 'Use default names' : 'Customize court names'}
+              </button>
+            </div>
+
+            {showCustomNames && (
+              <div className="grid grid-cols-2 gap-2.5 p-3 bg-white/60 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 max-h-52 overflow-y-auto">
+                {Array.from({ length: courtsCount }).map((_, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Court {i + 1}</span>
+                    <input
+                      type="text"
+                      value={courtNames[i] || ''}
+                      onChange={e => {
+                        const next = [...courtNames];
+                        next[i] = e.target.value;
+                        setCourtNames(next);
+                      }}
+                      placeholder={`Court ${i + 1}`}
+                      maxLength={30}
+                      className="px-3 py-2 text-sm font-bold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
