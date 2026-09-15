@@ -2,26 +2,30 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
-import { CourtStatus, PlayerStatus } from '@/types/models';
+import { CourtStatus, PlayerStatus, Team } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
-import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy } from 'lucide-react';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 
 export default function PlayerMonitorPage() {
-  const { code } = useParams();
+  const params = useParams();
+  const rawCode = params?.code;
+  const code = (typeof rawCode === 'string' ? rawCode : Array.isArray(rawCode) ? rawCode[0] : '').toUpperCase();
   const router = useRouter();
   const { session, courts, players, matches } = useStore();
   
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [showIdentifyModal, setShowIdentifyModal] = useState(false);
   const [activeNotification, setActiveNotification] = useState<{court: string, partner: string, opponents: string} | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   const lastMatchId = useRef<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<'queue' | 'leaderboards'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'games' | 'leaderboards'>('queue');
+  const [gamesFilter, setGamesFilter] = useState<'all' | 'mine'>('all');
 
   // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
   const lastCloudTimestamp = useRef<string>('');
@@ -54,22 +58,32 @@ export default function PlayerMonitorPage() {
         courts: stateJson.courts,
         matches: stateJson.matches
       });
+      setIsLoading(false);
     };
     
     const initRealtime = async () => {
        const { createClient } = await import('@/lib/supabase');
        const supabase = createClient();
        
-       if (!supabase) return;
+       if (!supabase) {
+         setIsLoading(false);
+         return;
+       }
        
-       // Initial fetch
+       // Initial fetch with case-insensitive match
        const { data } = await supabase
          .from('sessions')
-         .select('state_json, is_active, updated_at')
-         .eq('join_code', code)
+         .select('id, state_json, is_active, updated_at')
+         .ilike('join_code', code)
          .single();
-       if (data) {
+       if (data && isMounted) {
+         if (!data.is_active || data.state_json?.session?.isActive === false) {
+           router.replace(`/history/${data.id}?playerView=true`);
+           return;
+         }
          applyCloudState(data.state_json, data.updated_at);
+       } else if (isMounted) {
+         setIsLoading(false);
        }
        
        // Subscribe to realtime changes
@@ -81,8 +95,14 @@ export default function PlayerMonitorPage() {
            filter: `join_code=eq.${code}` 
          }, (payload: any) => {
            const newData = payload.new as any;
-           if (newData?.state_json) {
-             applyCloudState(newData.state_json, newData.updated_at);
+           if (newData && isMounted) {
+             if (newData.is_active === false || newData.state_json?.session?.isActive === false) {
+               router.replace(`/history/${newData.id}?playerView=true`);
+               return;
+             }
+             if (newData?.state_json) {
+               applyCloudState(newData.state_json, newData.updated_at);
+             }
            }
          })
          .subscribe();
@@ -93,10 +113,14 @@ export default function PlayerMonitorPage() {
          if (!isMounted) return;
          const { data: pollData } = await supabase
            .from('sessions')
-           .select('state_json, updated_at')
-           .eq('join_code', code)
+           .select('id, state_json, is_active, updated_at')
+           .ilike('join_code', code)
            .single();
-         if (pollData) {
+         if (pollData && isMounted) {
+           if (!pollData.is_active || pollData.state_json?.session?.isActive === false) {
+             router.replace(`/history/${pollData.id}?playerView=true`);
+             return;
+           }
            applyCloudState(pollData.state_json, pollData.updated_at);
          }
        }, 8000);
@@ -111,18 +135,18 @@ export default function PlayerMonitorPage() {
        if (channel) channel.unsubscribe();
        cleanup?.then(fn => fn?.());
     };
-  }, [code]);
+  }, [code, router]);
 
   // Redirect on end session
   useEffect(() => {
     // Check if this exact session (by join code) ended and is in local history
-    const endedSession = useStore.getState().sessionHistory.find(h => h.session.joinCode === code);
+    const endedSession = useStore.getState().sessionHistory.find(h => h.session?.joinCode?.toUpperCase() === code);
     if (endedSession) {
       router.push(`/history/${endedSession.session.id}?playerView=true`);
       return;
     }
     // Only redirect if the session in the store is for THIS join code and it ended
-    if (session && !session.isActive && session.joinCode === code) {
+    if (session && !session.isActive && session.joinCode?.toUpperCase() === code) {
       router.push(`/history/${session.id}?playerView=true`);
     }
   }, [session, router, code]);
@@ -210,9 +234,21 @@ export default function PlayerMonitorPage() {
     }
   }, [session?.currentAnnouncement, session?.announcementTimestamp]);
 
-  const endedSession = useStore.getState().sessionHistory.find(h => h.session.joinCode === code);
+  const endedSession = useStore.getState().sessionHistory.find(h => h.session?.joinCode?.toUpperCase() === code);
 
-  if (!session || session.joinCode !== code) {
+  if (isLoading && (!session || session.joinCode?.toUpperCase() !== code)) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+        <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10 flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+          <h1 className="text-xl font-bold mb-1">Loading Session...</h1>
+          <p className="text-slate-400 text-sm">Connecting to session {code}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session || session.joinCode?.toUpperCase() !== code) {
     if (endedSession) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
@@ -227,7 +263,7 @@ export default function PlayerMonitorPage() {
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
         <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10">
           <h1 className="text-2xl font-bold mb-2">Session Not Found</h1>
-          <p className="text-slate-400">Waiting for session data or invalid code.</p>
+          <p className="text-slate-400">Waiting for session data or invalid code: {code}</p>
         </div>
       </div>
     );
@@ -247,6 +283,31 @@ export default function PlayerMonitorPage() {
     : [];
 
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
+
+  // Calculate matches for Games tab
+  const completedMatches = matches.filter(m => m.endedAtEpochMs !== null);
+  const inProgressMatches = matches.filter(m => m.endedAtEpochMs === null);
+  const sortedCompletedMatches = [...completedMatches].sort(
+    (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
+  );
+
+  const matchNumberMap = new Map<string, number>();
+  [...matches]
+    .sort((a, b) => a.startedAtEpochMs - b.startedAtEpochMs)
+    .forEach((m, idx) => matchNumberMap.set(m.id, idx + 1));
+
+  const filteredCompletedMatches = gamesFilter === 'mine' && selectedPlayerId
+    ? sortedCompletedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
+    : sortedCompletedMatches;
+
+  const formatDuration = (startedAt: number, endedAt: number | null): string => {
+    if (!endedAt || endedAt < startedAt) return '< 1 min';
+    const totalSeconds = Math.floor((endedAt - startedAt) / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes === 0) return `${seconds}s`;
+    return `${minutes}m ${seconds}s`;
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 relative">
@@ -272,13 +333,19 @@ export default function PlayerMonitorPage() {
         <div className="flex bg-slate-800 p-1 rounded-2xl">
           <button 
             onClick={() => setActiveTab('queue')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
             <Users size={18} /> Queue
           </button>
           <button 
+            onClick={() => setActiveTab('games')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+          >
+            <Swords size={18} /> Games ({completedMatches.length})
+          </button>
+          <button 
             onClick={() => setActiveTab('leaderboards')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
             <Trophy size={18} /> Leaderboards
           </button>
@@ -376,6 +443,208 @@ export default function PlayerMonitorPage() {
               </div>
             </div>
           )}
+        </main>
+      )}
+
+      {activeTab === 'games' && (
+        <main className="max-w-7xl mx-auto px-4 space-y-6">
+          <div className="glass-dark rounded-3xl p-6 border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <Swords size={22} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight">Session Games</h2>
+                  <p className="text-xs text-slate-400">
+                    {completedMatches.length} completed {inProgressMatches.length > 0 ? `• ${inProgressMatches.length} live on courts` : ''}
+                  </p>
+                </div>
+              </div>
+
+              {selectedPlayerId && (
+                <div className="flex bg-slate-800 p-1 rounded-xl self-start sm:self-auto">
+                  <button
+                    onClick={() => setGamesFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${gamesFilter === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    All Games ({completedMatches.length})
+                  </button>
+                  <button
+                    onClick={() => setGamesFilter('mine')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${gamesFilter === 'mine' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    My Games ({completedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId)).length})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* In-Progress Live Games */}
+            {gamesFilter === 'all' && inProgressMatches.length > 0 && (
+              <div className="mb-6 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                  Currently Playing on Courts
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {inProgressMatches.map(m => {
+                    const court = courts.find(c => c.id === m.courtId);
+                    const teamAPlayers = m.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
+                    const teamBPlayers = m.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
+                    const isMyMatch = selectedPlayerId && (m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId));
+
+                    return (
+                      <div key={m.id} className={`bg-slate-800/80 rounded-2xl p-4 border ${isMyMatch ? 'border-blue-500 shadow-md shadow-blue-500/10' : 'border-slate-700'}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                            {court?.label || 'Court'}
+                          </span>
+                          <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Live Now
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <div className="flex-1 font-semibold text-slate-200">
+                            {teamAPlayers.map(p => p?.name).join(' & ')}
+                          </div>
+                          <span className="text-xs font-bold text-slate-500">VS</span>
+                          <div className="flex-1 font-semibold text-slate-200 text-right">
+                            {teamBPlayers.map(p => p?.name).join(' & ')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {filteredCompletedMatches.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <Swords size={48} className="mb-4 opacity-20" />
+                <p className="font-medium text-base">
+                  {gamesFilter === 'mine' ? "You haven't played any completed matches yet" : "No matches completed yet"}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Finished games will show up here automatically</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredCompletedMatches.map((match) => {
+                  const matchNumber = matchNumberMap.get(match.id) ?? 1;
+                  const court = courts.find(c => c.id === match.courtId);
+                  const teamAPlayers = match.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
+                  const teamBPlayers = match.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
+                  const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
+                  const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
+                  const isMyMatch = selectedPlayerId && (match.teamA.includes(selectedPlayerId) || match.teamB.includes(selectedPlayerId));
+                  const myTeamWon = selectedPlayerId && ((match.teamA.includes(selectedPlayerId) && isWinnerA) || (match.teamB.includes(selectedPlayerId) && isWinnerB));
+                  const duration = formatDuration(match.startedAtEpochMs, match.endedAtEpochMs);
+                  const endTime = match.endedAtEpochMs ? new Date(match.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+                  return (
+                    <div
+                      key={match.id}
+                      className={`bg-slate-800/60 rounded-2xl border p-4 transition-all ${
+                        isMyMatch ? 'border-blue-500/60 bg-blue-950/20 shadow-md shadow-blue-500/5' : 'border-slate-700/60'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                            Match #{matchNumber}
+                          </span>
+                          <span className="text-slate-400 font-medium">
+                            {court?.label || 'Court'}
+                          </span>
+                          {isMyMatch && (
+                            <span className={`px-2 py-0.5 rounded font-bold ${
+                              myTeamWon ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
+                            }`}>
+                              {myTeamWon ? '🏆 Victory' : 'Played'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} /> {duration}
+                          </span>
+                          {endTime && <span>{endTime}</span>}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Team A */}
+                        <div className={`p-3 rounded-xl border ${
+                          isWinnerA ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team 1</span>
+                            {isWinnerA && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                <Trophy size={10} /> Winner
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            {teamAPlayers.map((p, idx) => (
+                              <div key={p?.id || idx} className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                  {p?.photoUrl ? (
+                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                  ) : (
+                                    (p?.name || '??').substring(0, 2).toUpperCase()
+                                  )}
+                                </div>
+                                <span className={`text-sm font-semibold truncate ${
+                                  selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                                }`}>
+                                  {p?.name || 'Player'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Team B */}
+                        <div className={`p-3 rounded-xl border ${
+                          isWinnerB ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
+                        }`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team 2</span>
+                            {isWinnerB && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                <Trophy size={10} /> Winner
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            {teamBPlayers.map((p, idx) => (
+                              <div key={p?.id || idx} className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                  {p?.photoUrl ? (
+                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                  ) : (
+                                    (p?.name || '??').substring(0, 2).toUpperCase()
+                                  )}
+                                </div>
+                                <span className={`text-sm font-semibold truncate ${
+                                  selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                                }`}>
+                                  {p?.name || 'Player'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </main>
       )}
 

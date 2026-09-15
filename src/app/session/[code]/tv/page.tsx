@@ -6,20 +6,104 @@ import { CourtStatus, PlayerStatus } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
 import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function TVDisplayPage() {
-  const { code } = useParams();
+  const params = useParams();
+  const rawCode = params?.code;
+  const code = (typeof rawCode === 'string' ? rawCode : Array.isArray(rawCode) ? rawCode[0] : '').toUpperCase();
   const { session, courts, players } = useStore();
   const [time, setTime] = useState(new Date());
+  const lastCloudTimestamp = useRef<string>('');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  if (!session || session.joinCode !== code) {
-    return <div className="min-h-screen bg-black text-white flex items-center justify-center p-8 text-4xl">Waiting for session...</div>;
+  // Cloud Sync for TV View
+  useEffect(() => {
+    let channel: any = null;
+    let isMounted = true;
+    
+    const applyCloudState = (stateJson: any, updatedAt: string) => {
+      if (!isMounted || !stateJson) return;
+      if (updatedAt && lastCloudTimestamp.current) {
+        const newTime = new Date(updatedAt).getTime();
+        const lastTime = new Date(lastCloudTimestamp.current).getTime();
+        if (!isNaN(newTime) && !isNaN(lastTime) && newTime <= lastTime) {
+          return;
+        }
+      }
+      lastCloudTimestamp.current = updatedAt || new Date().toISOString();
+      useStore.setState({
+        session: stateJson.session,
+        players: stateJson.players,
+        courts: stateJson.courts,
+        matches: stateJson.matches
+      });
+    };
+
+    const initCloud = async () => {
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
+      if (!supabase) return;
+
+      const { data } = await supabase
+        .from('sessions')
+        .select('state_json, is_active, updated_at')
+        .ilike('join_code', code)
+        .maybeSingle();
+
+      if (data && isMounted) {
+        applyCloudState(data.state_json, data.updated_at);
+      }
+
+      channel = supabase.channel(`tv-view-${code}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          filter: `join_code=eq.${code}`
+        }, (payload: any) => {
+          const newData = payload.new as any;
+          if (newData?.state_json && isMounted) {
+            applyCloudState(newData.state_json, newData.updated_at);
+          }
+        })
+        .subscribe();
+
+      const pollInterval = setInterval(async () => {
+        if (!isMounted) return;
+        const { data: pollData } = await supabase
+          .from('sessions')
+          .select('state_json, updated_at')
+          .ilike('join_code', code)
+          .maybeSingle();
+        if (pollData && isMounted) {
+          applyCloudState(pollData.state_json, pollData.updated_at);
+        }
+      }, 8000);
+
+      return () => clearInterval(pollInterval);
+    };
+
+    const cleanup = initCloud();
+    return () => {
+      isMounted = false;
+      if (channel) channel.unsubscribe();
+      cleanup?.then(fn => fn?.());
+    };
+  }, [code]);
+
+  if (!session || session.joinCode?.toUpperCase() !== code) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-6"></div>
+        <div className="text-3xl font-black mb-2">Connecting TV Display...</div>
+        <div className="text-slate-400 font-mono text-lg">Session Code: {code}</div>
+      </div>
+    );
   }
 
   const queuedPlayers = players
