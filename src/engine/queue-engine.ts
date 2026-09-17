@@ -43,14 +43,34 @@ export function priorityOrder(pool: Player[]): Player[] {
 export function buildNextBatches(
   availablePlayers: Player[],
   openCourtCount: number,
-  matchingMode: 'balanced' | 'competitive' = 'balanced'
+  matchingMode: 'balanced' | 'competitive' = 'balanced',
+  activePlayerIds?: Set<string>
 ): Player[][] {
   if (openCourtCount <= 0) return [];
 
-  const available = availablePlayers.filter((p) => p.status === PlayerStatus.AVAILABLE);
-  if (available.length < 4) return [];
+  // Filter out any player who is not available, already on a court, or in an active match
+  const available = availablePlayers.filter((p) => {
+    if (p.status !== PlayerStatus.AVAILABLE) return false;
+    if (p.currentCourtId != null) return false;
+    if (activePlayerIds && activePlayerIds.has(p.id)) return false;
+    return true;
+  });
 
-  const remainingPool = [...available];
+  // Deduplicate by player ID and case-insensitive name so identical entries cannot be scheduled concurrently
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const deduplicated: Player[] = [];
+  for (const p of available) {
+    const nameKey = p.name.trim().toLowerCase();
+    if (seenIds.has(p.id) || seenNames.has(nameKey)) continue;
+    seenIds.add(p.id);
+    seenNames.add(nameKey);
+    deduplicated.push(p);
+  }
+
+  if (deduplicated.length < 4) return [];
+
+  const remainingPool = [...deduplicated];
   const resultBatches: Player[][] = [];
 
   for (let courtIdx = 0; courtIdx < openCourtCount; courtIdx++) {

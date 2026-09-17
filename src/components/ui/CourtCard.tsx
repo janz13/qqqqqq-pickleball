@@ -45,7 +45,11 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
   const teamA = match ? match.teamA.map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
   const teamB = match ? match.teamB.map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
   
-  const availablePlayers = players.filter(p => p.status === PlayerStatus.AVAILABLE);
+  const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
+  const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
+  const availablePlayers = players.filter(
+    p => p.status === PlayerStatus.AVAILABLE && !p.currentCourtId && !activePlayerIds.has(p.id)
+  );
 
   const handleCompleteMatch = (winner: Team) => {
     if (!match) return;

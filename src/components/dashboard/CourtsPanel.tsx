@@ -10,14 +10,17 @@ import { Plus, Play, Repeat, Users, X, PlusCircle } from 'lucide-react';
 import { useTTS } from '@/hooks/useTTS';
 
 export default function CourtsPanel() {
-  const { courts, players, getUpcomingBatches, startBatch, addCourt } = useStore();
+  const { courts, players, matches, getUpcomingBatches, startBatch, addCourt } = useStore();
   const tts = useTTS();
+
+  const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
+  const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
 
   const activeCourtsCount = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
 
   const queuedPlayers = players
-    .filter(p => p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED)
+    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
     .sort((a, b) => {
       if (a.isLatecomer !== b.isLatecomer) return a.isLatecomer ? -1 : 1;
       return a.queuedAtEpochMs - b.queuedAtEpochMs;
@@ -28,6 +31,7 @@ export default function CourtsPanel() {
   const [swappingPlayer, setSwappingPlayer] = useState<{batchIndex: number, isTeamA: boolean, playerId: string} | null>(null);
   const [showAddCourtModal, setShowAddCourtModal] = useState(false);
   const [newCourtName, setNewCourtName] = useState('');
+  const [sendingCourtIds, setSendingCourtIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setTimeout(() => setLocalBatches(engineBatches), 0);
@@ -41,6 +45,11 @@ export default function CourtsPanel() {
     const newPlayer = players.find(p => p.id === newPlayerId);
     if (!newPlayer || !batch) return;
     
+    // Guard against swapping in a player who is already playing or in this batch
+    if (activePlayerIds.has(newPlayer.id)) return;
+    const currentBatchIds = new Set([...batch.teamA, ...batch.teamB].map(p => p.id));
+    if (currentBatchIds.has(newPlayer.id)) return;
+
     if (swappingPlayer.isTeamA) {
       batch.teamA = batch.teamA.map(p => p.id === swappingPlayer.playerId ? newPlayer : p);
     } else {
@@ -77,12 +86,25 @@ export default function CourtsPanel() {
   };
 
   const handleSendToCourt = (batch: ProposedMatch, targetCourt: { id: string, label: string }) => {
-    startBatch(batch, targetCourt.id);
-    tts.announceCourtAssignment(
-      targetCourt.label, 
-      batch.teamA.map(p => p.name), 
-      batch.teamB.map(p => p.name)
-    );
+    if (sendingCourtIds.has(targetCourt.id)) return;
+    setSendingCourtIds(prev => new Set(prev).add(targetCourt.id));
+
+    try {
+      startBatch(batch, targetCourt.id);
+      tts.announceCourtAssignment(
+        targetCourt.label, 
+        batch.teamA.map(p => p.name), 
+        batch.teamB.map(p => p.name)
+      );
+    } finally {
+      setTimeout(() => {
+        setSendingCourtIds(prev => {
+          const next = new Set(prev);
+          next.delete(targetCourt.id);
+          return next;
+        });
+      }, 600);
+    }
   };
 
   return (
@@ -110,19 +132,24 @@ export default function CourtsPanel() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(() => {
-               // Filter out any batches that contain players who are already playing
-               // This prevents a race condition where stale localBatches are sent to the next available court
+               // Strictly filter out any batches that contain players in active matches or already on courts
                const validLocalBatches = localBatches.filter(batch => {
                  const allPlayers = [...batch.teamA, ...batch.teamB];
+                 const uniqueIds = new Set(allPlayers.map(p => p.id));
+                 if (uniqueIds.size !== 4) return false;
+
                  return allPlayers.every(p => {
+                   if (activePlayerIds.has(p.id)) return false;
                    const storePlayer = players.find(sp => sp.id === p.id);
-                   return storePlayer && storePlayer.status !== PlayerStatus.PLAYING;
+                   return storePlayer && storePlayer.status === PlayerStatus.AVAILABLE && !storePlayer.currentCourtId;
                  });
                });
 
+               const availableCourts = courts.filter(c => c.status === CourtStatus.OPEN && !sendingCourtIds.has(c.id));
+
                return validLocalBatches.map((batch, idx) => {
-                 const availableCourts = courts.filter(c => c.status === CourtStatus.OPEN);
                  const targetCourt = availableCourts[idx];
+                 const isCourtSending = targetCourt ? sendingCourtIds.has(targetCourt.id) : false;
               
               return (
                 <div key={idx} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl flex flex-col gap-3 relative">
@@ -156,9 +183,12 @@ export default function CourtsPanel() {
                   {targetCourt && (
                     <button
                       onClick={() => handleSendToCourt(batch, targetCourt)}
-                      className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02]"
+                      disabled={isCourtSending}
+                      className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold shadow-sm transition-all duration-200 ${
+                        isCourtSending ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'
+                      }`}
                     >
-                      <Play size={16} /> Send to Court
+                      <Play size={16} /> {isCourtSending ? 'Sending...' : 'Send to Court'}
                     </button>
                   )}
                 </div>

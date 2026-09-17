@@ -12,7 +12,7 @@ export default function TVDisplayPage() {
   const params = useParams();
   const rawCode = params?.code;
   const code = (typeof rawCode === 'string' ? rawCode : Array.isArray(rawCode) ? rawCode[0] : '').toUpperCase();
-  const { session, courts, players } = useStore();
+  const { session, courts, players, matches } = useStore();
   const [time, setTime] = useState(new Date());
   const lastCloudTimestamp = useRef<string>('');
 
@@ -107,8 +107,11 @@ export default function TVDisplayPage() {
     );
   }
 
+  const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
+  const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
+
   const queuedPlayers = players
-    .filter(p => p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED)
+    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
     .sort((a, b) => a.queuedAtEpochMs - b.queuedAtEpochMs);
     
   const upNext = queuedPlayers.slice(0, 8);

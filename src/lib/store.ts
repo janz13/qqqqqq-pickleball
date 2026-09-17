@@ -46,7 +46,7 @@ interface StoreState {
   endSession: () => void;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
-  swapPlayerInMatch: (matchId: string, team: Team, oldPlayerId: string, newPlayerId: string) => void;
+  swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
   
@@ -133,7 +133,16 @@ export const useStore = create<StoreState>()(
       setMatches: (matches) => set({ matches }),
       
       addPlayer: (player) => {
-        set((state) => ({ players: [...state.players, player] }));
+        set((state) => {
+          const existing = state.players.find(
+            p => p.id === player.id || p.name.trim().toLowerCase() === player.name.trim().toLowerCase()
+          );
+          if (existing) {
+            console.warn(`addPlayer skipped: Player "${player.name}" already in session`);
+            return state;
+          }
+          return { players: [...state.players, player] };
+        });
         get().saveToRoster(player);
       },
       updatePlayer: (player) => {
@@ -333,8 +342,52 @@ export const useStore = create<StoreState>()(
       }),
 
       startBatch: (batch, courtId) => set((state) => {
-        const matchId = 'm_' + Math.random().toString(36).substr(2, 9);
         const targetCourt = state.courts.find(c => c.id === courtId);
+        if (!targetCourt || targetCourt.status !== CourtStatus.OPEN) {
+          console.warn(`startBatch rejected: Court ${courtId} is not OPEN`);
+          return state;
+        }
+
+        const existingActiveMatch = state.matches.find(
+          m => m.courtId === courtId && m.endedAtEpochMs == null
+        );
+        if (existingActiveMatch || targetCourt.currentMatchId) {
+          console.warn(`startBatch rejected: Court ${courtId} already has an active match`);
+          return state;
+        }
+
+        const activeMatches = state.matches.filter(m => m.endedAtEpochMs == null);
+        const activePlayerIds = new Set<string>(
+          activeMatches.flatMap(m => [...m.teamA, ...m.teamB])
+        );
+
+        const batchPlayerIds = [...batch.teamA, ...batch.teamB].map(p => p.id);
+
+        // Verify no player in batch is already playing in an active match
+        const conflictingActivePlayer = batchPlayerIds.find(id => activePlayerIds.has(id));
+        if (conflictingActivePlayer) {
+          console.warn(`startBatch rejected: Player ${conflictingActivePlayer} is already playing in an active match`);
+          return state;
+        }
+
+        // Verify no player has status PLAYING or active court assignment
+        const conflictingStatusPlayer = batchPlayerIds.find(id => {
+          const p = state.players.find(sp => sp.id === id);
+          return p && (p.status === PlayerStatus.PLAYING || p.currentCourtId != null);
+        });
+        if (conflictingStatusPlayer) {
+          console.warn(`startBatch rejected: Player ${conflictingStatusPlayer} has status PLAYING or active court assignment`);
+          return state;
+        }
+
+        // Verify batch has exactly 4 unique players
+        const uniqueBatchPlayerIds = new Set(batchPlayerIds);
+        if (uniqueBatchPlayerIds.size !== 4) {
+          console.warn(`startBatch rejected: Batch does not contain 4 unique players`);
+          return state;
+        }
+
+        const matchId = 'm_' + Math.random().toString(36).substr(2, 9);
         const newMatch: Match = {
           id: matchId,
           courtId,
@@ -499,10 +552,28 @@ export const useStore = create<StoreState>()(
         return newSession;
       },
 
-      swapPlayerInMatch: (matchId, oldPlayerId, newPlayerId) => set((state) => {
-        const match = state.matches.find(m => m.id === matchId);
+      swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => set((state) => {
+        let oldPlayerId: string;
+        let newPlayerId: string;
+        if (maybeNewId !== undefined) {
+          oldPlayerId = oldOrNewId;
+          newPlayerId = maybeNewId;
+        } else {
+          oldPlayerId = teamOrOldId;
+          newPlayerId = oldOrNewId;
+        }
+
+        const match = state.matches.find(m => m.id === matchId && m.endedAtEpochMs == null);
         if (!match) return state;
         
+        // Verify new player is not already in any active match
+        const activeMatches = state.matches.filter(m => m.endedAtEpochMs == null);
+        const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
+        if (activePlayerIds.has(newPlayerId)) {
+          console.warn(`swapPlayerInMatch rejected: Player ${newPlayerId} is already in an active match`);
+          return state;
+        }
+
         const newMatches = state.matches.map(m => {
           if (m.id === matchId) {
             return {
@@ -749,7 +820,14 @@ export const useStore = create<StoreState>()(
         if (openCourts === 0) return [];
 
         const mode = state.session?.matchingMode || 'balanced';
-        const batches = buildNextBatches(state.players, openCourts, mode);
+        const activeMatches = state.matches.filter(m => m.endedAtEpochMs == null);
+        const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
+
+        const eligiblePlayers = state.players.filter(
+          p => p.status === PlayerStatus.AVAILABLE && !p.currentCourtId && !activePlayerIds.has(p.id)
+        );
+
+        const batches = buildNextBatches(eligiblePlayers, openCourts, mode, activePlayerIds);
         return batches.map(b => pairFour(b));
       },
 

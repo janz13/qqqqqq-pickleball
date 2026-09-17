@@ -270,8 +270,11 @@ export default function PlayerMonitorPage() {
     );
   }
 
+  const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
+  const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
+
   const queuedPlayers = players
-    .filter(p => p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED)
+    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
     .sort((a, b) => {
       if (a.isLatecomer !== b.isLatecomer) return a.isLatecomer ? -1 : 1;
       return a.queuedAtEpochMs - b.queuedAtEpochMs;
@@ -283,7 +286,7 @@ export default function PlayerMonitorPage() {
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
   const batchesNeeded = openCourtsCount > 0 ? openCourtsCount : (session?.queueBatchesShown || 1);
   const upcomingBatches = queuedPlayers.length >= 4 
-    ? buildNextBatches(players, batchesNeeded, session?.matchingMode || 'balanced').map(b => pairFour(b))
+    ? buildNextBatches(queuedPlayers, batchesNeeded, session?.matchingMode || 'balanced', activePlayerIds).map(b => pairFour(b))
     : [];
 
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
