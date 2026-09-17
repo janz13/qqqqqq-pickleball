@@ -56,15 +56,16 @@ export function buildNextBatches(
     return true;
   });
 
-  // Deduplicate by player ID and case-insensitive name so identical entries cannot be scheduled concurrently
+  // Deduplicate by player ID and case-insensitive name (if provided)
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
   const deduplicated: Player[] = [];
   for (const p of available) {
+    if (seenIds.has(p.id)) continue;
     const nameKey = p.name.trim().toLowerCase();
-    if (seenIds.has(p.id) || seenNames.has(nameKey)) continue;
+    if (nameKey && seenNames.has(nameKey)) continue;
     seenIds.add(p.id);
-    seenNames.add(nameKey);
+    if (nameKey) seenNames.add(nameKey);
     deduplicated.push(p);
   }
 
