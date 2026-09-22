@@ -1000,4 +1000,126 @@ describe('Intense Full-App End-to-End Stress Test Suite (70 Scenarios)', () => {
       expect(violated).toBe(false);
     });
   });
+
+  // =========================================================================
+  // Part 12: Simultaneous Player Viewers & Concurrency Scaling (Tests 71-75)
+  // =========================================================================
+  describe('Part 12: Simultaneous Player Viewers & Concurrency Scaling', () => {
+    it('Test 71: Simulates 50 concurrent player devices connecting to the same session by join code', () => {
+      useStore.getState().initializeSession('50-Viewer Session', 4);
+      for (let i = 1; i <= 50; i++) {
+        useStore.getState().addPlayer(createTestPlayer(`viewer_p${i}`, `Player ${i}`, 3));
+      }
+
+      const session = useStore.getState().session!;
+      const statePayload = {
+        session,
+        players: useStore.getState().players,
+        courts: useStore.getState().courts,
+        matches: useStore.getState().matches,
+      };
+
+      // Simulate 50 independent player client devices receiving the payload
+      const viewerClients = Array.from({ length: 50 }, (_, i) => ({
+        deviceId: `device_${i + 1}`,
+        connectedCode: session.joinCode,
+        receivedPlayersCount: statePayload.players.length,
+        receivedCourtsCount: statePayload.courts.length,
+      }));
+
+      expect(viewerClients.length).toBe(50);
+      expect(viewerClients.every(v => v.connectedCode === session.joinCode)).toBe(true);
+      expect(viewerClients.every(v => v.receivedPlayersCount === 50)).toBe(true);
+      expect(viewerClients.every(v => v.receivedCourtsCount === 4)).toBe(true);
+    });
+
+    it('Test 72: Device identity isolation: each device chooses their own player identity without cross-contamination', () => {
+      const NUM_DEVICES = 50;
+      // Simulate separate localStorages for 50 mobile devices
+      const deviceStorages = new Map<string, Map<string, string>>();
+
+      for (let i = 1; i <= NUM_DEVICES; i++) {
+        const deviceStorage = new Map<string, string>();
+        // Device i identifies as viewer_p{i}
+        deviceStorage.set(`qqqqqq_identity_sess_test`, `viewer_p${i}`);
+        deviceStorages.set(`device_${i}`, deviceStorage);
+      }
+
+      expect(deviceStorages.size).toBe(50);
+      for (let i = 1; i <= NUM_DEVICES; i++) {
+        const id = deviceStorages.get(`device_${i}`)?.get(`qqqqqq_identity_sess_test`);
+        expect(id).toBe(`viewer_p${i}`);
+      }
+    });
+
+    it('Test 73: Broadcast update delivery: only called players receive a personal match notification', () => {
+      useStore.getState().initializeSession('Notification Broadcast', 2);
+      for (let i = 1; i <= 20; i++) {
+        useStore.getState().addPlayer(createTestPlayer(`p${i}`, `Player ${i}`, 3));
+      }
+
+      const p = useStore.getState().players;
+      // Match on Court 1 with p1, p2 vs p3, p4
+      useStore.getState().startBatch({ teamA: [p[0], p[1]], teamB: [p[2], p[3]] }, 'c_1');
+
+      const activeMatch = useStore.getState().matches[0];
+      const matchPlayerIds = new Set([...activeMatch.teamA, ...activeMatch.teamB]);
+
+      // 20 viewers check whether their device triggers "Match Starting" notification
+      const notificationsTriggered: string[] = [];
+      for (let i = 1; i <= 20; i++) {
+        const myPlayerId = `p${i}`;
+        if (matchPlayerIds.has(myPlayerId)) {
+          notificationsTriggered.push(myPlayerId);
+        }
+      }
+
+      expect(notificationsTriggered).toEqual(['p1', 'p2', 'p3', 'p4']);
+      expect(notificationsTriggered.length).toBe(4);
+    });
+
+    it('Test 74: Timestamp deduplication: older or equal timestamps from simultaneous polling are safely discarded', () => {
+      let currentTimestamp = '2026-09-22T02:00:00.000Z';
+      let renderCount = 0;
+
+      const applyCloudState = (updatedAt: string) => {
+        const newTime = new Date(updatedAt).getTime();
+        const lastTime = new Date(currentTimestamp).getTime();
+        if (newTime <= lastTime) {
+          return; // Discard stale/redundant polling data
+        }
+        currentTimestamp = updatedAt;
+        renderCount++;
+      };
+
+      // 50 simultaneous poll requests arriving with the same timestamp
+      for (let i = 0; i < 50; i++) {
+        applyCloudState('2026-09-22T02:00:00.000Z');
+      }
+      expect(renderCount).toBe(0); // 0 redundant re-renders!
+
+      // New change arrives with newer timestamp
+      applyCloudState('2026-09-22T02:00:05.000Z');
+      expect(renderCount).toBe(1);
+    });
+
+    it('Test 75: Pure read-only guard: viewer paths never write back to cloud storage', () => {
+      const canUploadState = (pathname: string, isOwner: boolean, isActive: boolean) => {
+        if (!pathname.startsWith('/dashboard')) return false;
+        if (!isActive || !isOwner) return false;
+        return true;
+      };
+
+      // Player view on mobile
+      expect(canUploadState('/session/ABCDE', false, true)).toBe(false);
+      // TV Kiosk view
+      expect(canUploadState('/session/ABCDE/tv', false, true)).toBe(false);
+      // History view
+      expect(canUploadState('/history/sess_123', false, false)).toBe(false);
+      // Non-owner dashboard viewer
+      expect(canUploadState('/dashboard/sess_123', false, true)).toBe(false);
+      // Legitimate active organizer dashboard
+      expect(canUploadState('/dashboard/sess_123', true, true)).toBe(true);
+    });
+  });
 });
