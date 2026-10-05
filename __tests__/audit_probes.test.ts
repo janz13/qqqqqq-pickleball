@@ -29,9 +29,9 @@ function dispatchFirst(courtId = 'c_1') {
   return useStore.getState().matches.find(m => m.courtId === courtId && !m.endedAtEpochMs)!;
 }
 
-describe('Audit probes (it.failing = defect currently reproduces)', () => {
+describe('Audit probes (regression tests for fixed defects D1-D8)', () => {
   // ── D1 ────────────────────────────────────────────────────────────────────
-  it.failing('D1: completing the same match twice must not double-count wins/games (double-tap on "Team 1 Wins")', () => {
+  it('D1: completing the same match twice must not double-count wins/games (double-tap on "Team 1 Wins")', () => {
     setup(1, 4);
     const m = dispatchFirst();
     useStore.getState().completeMatch(m.id, Team.A, 11, 0);
@@ -41,7 +41,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
     expect(p.sessionWins).toBe(1);
   });
 
-  it.failing('D1b: completing a stale match must not free players who are now on a NEW match', () => {
+  it('D1b: completing a stale match must not free players who are now on a NEW match', () => {
     setup(1, 4);
     const m1 = dispatchFirst();
     useStore.getState().completeMatch(m1.id, Team.A, 11, 0);
@@ -54,7 +54,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D2 ────────────────────────────────────────────────────────────────────
-  it.failing('D2: Roster dropdown → "Playing" on a benched player must not create a ghost who vanishes from the queue', () => {
+  it('D2: Roster dropdown → "Playing" on a benched player must not create a ghost who vanishes from the queue', () => {
     setup(1, 5);
     useStore.getState().updatePlayerStatus('p0', PlayerStatus.PLAYING); // RosterPanel <select> allows this
     const s = useStore.getState();
@@ -64,7 +64,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
     expect(p0.status === PlayerStatus.PLAYING && !inAnyMatch).toBe(false);
   });
 
-  it.failing('D2b: player marked "Out" while on court must stay checked-out after the match ends', () => {
+  it('D2b: player marked "Out" while on court must stay checked-out after the match ends', () => {
     setup(1, 4);
     const m = dispatchFirst();
     const leaver = m.teamA[0];
@@ -74,7 +74,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D3 ────────────────────────────────────────────────────────────────────
-  it.failing('D3: Edit-player dialog must not allow renaming to an existing player\'s name', () => {
+  it('D3: Edit-player dialog must not allow renaming to an existing player\'s name', () => {
     setup(1, 4);
     const p1 = useStore.getState().players.find(p => p.id === 'p1')!;
     useStore.getState().updatePlayer({ ...p1, name: 'p0' }); // RosterPanel edit → Save
@@ -83,7 +83,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D4 ────────────────────────────────────────────────────────────────────
-  it.failing('D4: CSV half-levels (template uses 3.5 / 4.0) must not be treated as a forbidden 3+ tier gap in competitive mode', () => {
+  it('D4: CSV half-levels (template uses 3.5 / 4.0) must not be treated as a forbidden 3+ tier gap in competitive mode', () => {
     // 3.5 vs 3.0 is only half a level apart. In competitive mode skillDiff=0.5 hits the
     // `else` branch (skillDiff * 100000) which is meant for 3+ tier gaps.
     const pool = [
@@ -102,7 +102,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D5 ────────────────────────────────────────────────────────────────────
-  it.failing('D5: a player added mid-session (latecomer) must actually receive catch-up priority', () => {
+  it('D5: a player added mid-session (latecomer) must actually receive catch-up priority', () => {
     setup(1, 8);
     // Play 4 rounds so the field has games
     for (let i = 0; i < 4; i++) {
@@ -121,7 +121,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D6 ────────────────────────────────────────────────────────────────────
-  it.failing('D6: starting a NEW session must close (not orphan) the previous active session', () => {
+  it('D6: starting a NEW session must close (not orphan) the previous active session', () => {
     setup(2, 8);
     const first = useStore.getState().session!;
     dispatchFirst();
@@ -132,7 +132,7 @@ describe('Audit probes (it.failing = defect currently reproduces)', () => {
   });
 
   // ── D7 ────────────────────────────────────────────────────────────────────
-  it.failing('D7: generated join codes must always be exactly 5 characters', () => {
+  it('D7: generated join codes must always be exactly 5 characters', () => {
     // initializeSession uses Math.random().toString(36).substring(2, 7)
     const spy = jest.spyOn(Math, 'random').mockReturnValue(0.5); // "0.i" → "I"
     try {
@@ -179,7 +179,7 @@ describe('Audit checks that PASS (verified-correct behaviour)', () => {
 
   // D8 — found by this run: buildNextBatches drops every combo containing a locked
   // player whose partner is not in the available pool, so the player starves.
-  it.failing('D8: Duo lock with one partner resting: the other partner still gets games', () => {
+  it('D8: Duo lock with one partner resting: the other partner still gets games', () => {
     setup(1, 8);
     useStore.getState().setLockedPartner('p0', 'p1');
     useStore.getState().updatePlayerStatus('p1', PlayerStatus.RESTING);

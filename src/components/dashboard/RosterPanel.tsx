@@ -393,7 +393,7 @@ export default function RosterPanel() {
                           className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md py-1 px-2 cursor-pointer shadow-sm outline-none focus:ring-1 focus:ring-blue-500"
                         >
                           <option value={PlayerStatus.AVAILABLE}>Available</option>
-                          <option value={PlayerStatus.PLAYING}>Playing</option>
+                          {player.status === PlayerStatus.PLAYING && <option value={PlayerStatus.PLAYING} disabled>Playing</option>}
                           <option value={PlayerStatus.RESTING}>Resting</option>
                           <option value={PlayerStatus.CHECKED_OUT}>Out</option>
                         </select>
@@ -418,6 +418,11 @@ export default function RosterPanel() {
                       <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
                           <input type="text" value={editingPlayer.name} onChange={e => setEditingPlayer({...editingPlayer, name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+                          {!editingPlayer.name.trim() ? (
+                            <p className="text-xs text-rose-500 mt-1">Name cannot be empty</p>
+                          ) : players.some(p => p.id !== editingPlayer.id && p.name.trim().toLowerCase() === editingPlayer.name.trim().toLowerCase()) && (
+                            <p className="text-xs text-rose-500 mt-1">A player with this name already exists</p>
+                          )}
                       </div>
                       
                       <div>
@@ -449,7 +454,7 @@ export default function RosterPanel() {
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
                           <select value={editingPlayer.status} onChange={e => setEditingPlayer({...editingPlayer, status: e.target.value as PlayerStatus})} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 outline-none">
                               <option value={PlayerStatus.AVAILABLE}>Available</option>
-                              <option value={PlayerStatus.PLAYING}>Playing</option>
+                              {players.find(p => p.id === editingPlayer.id)?.status === PlayerStatus.PLAYING && <option value={PlayerStatus.PLAYING} disabled>Playing</option>}
                               <option value={PlayerStatus.RESTING}>Resting</option>
                               <option value={PlayerStatus.CHECKED_OUT}>Checked Out (Pre-registered)</option>
                           </select>
@@ -484,11 +489,12 @@ export default function RosterPanel() {
                   <div className="mt-6 flex gap-3 justify-end">
                       <button onClick={() => setEditingPlayer(null)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium">Cancel</button>
                       <button 
+                        disabled={!editingPlayer.name.trim() || players.some(p => p.id !== editingPlayer.id && p.name.trim().toLowerCase() === editingPlayer.name.trim().toLowerCase())}
                         onClick={() => { 
                           updatePlayer(editingPlayer); 
                           setEditingPlayer(null); 
                         }} 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Save Changes
                       </button>

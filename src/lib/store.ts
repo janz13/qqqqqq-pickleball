@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer } from '@/types/models';
-import { buildNextBatches, incrementSitOuts } from '@/engine/queue-engine';
+import { buildNextBatches, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 
 interface StoreState {
@@ -141,11 +141,35 @@ export const useStore = create<StoreState>()(
             console.warn(`addPlayer skipped: Player "${player.name}" already in session`);
             return state;
           }
-          return { players: [...state.players, player] };
+          // Latecomers get a catch-up target (median games of the field) so
+          // the queue engine actually prioritises them until they catch up.
+          let toAdd = player;
+          if (player.isLatecomer) {
+            const target = catchUpTargetForNewPlayer(state.players);
+            toAdd = {
+              ...player,
+              catchUpTargetGames: target,
+              hasCaughtUp: player.sessionGamesPlayed >= target,
+            };
+          }
+          return { players: [...state.players, toAdd] };
         });
         get().saveToRoster(player);
       },
       updatePlayer: (player) => {
+        const pre = get();
+        // D3: reject renames that collide with another player's name
+        const nameKey = player.name.trim().toLowerCase();
+        if (pre.players.some(p => p.id !== player.id && p.name.trim().toLowerCase() === nameKey)) {
+          console.warn(`updatePlayer rejected: name "${player.name}" already in use`);
+          return;
+        }
+        // D2: never allow a manual PLAYING status unless they are actually in an active match
+        const prevForGhost = pre.players.find(p => p.id === player.id);
+        if (player.status === PlayerStatus.PLAYING && prevForGhost?.status !== PlayerStatus.PLAYING) {
+          const inMatch = pre.matches.some(m => !m.endedAtEpochMs && [...m.teamA, ...m.teamB].includes(player.id));
+          if (!inMatch) player = { ...player, status: prevForGhost?.status ?? PlayerStatus.AVAILABLE };
+        }
         set((state) => {
           // If player has a new lock, we must handle bidirectional logic atomically
           const oldPlayer = state.players.find(p => p.id === player.id);
@@ -256,7 +280,9 @@ export const useStore = create<StoreState>()(
       
       completeMatch: (matchId, winner, scoreA, scoreB) => set((state) => {
         const match = state.matches.find(m => m.id === matchId);
-        if (!match) return state;
+        // Idempotency guard: ignore unknown or already-completed matches
+        // (double-tap on "Team Wins", stale UI re-submits).
+        if (!match || match.endedAtEpochMs) return state;
 
         const newMatches = state.matches.map(m => 
           m.id === matchId 
@@ -279,9 +305,12 @@ export const useStore = create<StoreState>()(
             const opponents = isTeamA ? match.teamB : match.teamA;
             const recentOpponents = [...opponents, ...p.recentOpponentIds].slice(0, 6);
 
+            // Preserve an explicit "Out" / "Resting" set by the organizer mid-match
+            const keepStatus = p.status === PlayerStatus.CHECKED_OUT || p.status === PlayerStatus.RESTING;
+
             return {
               ...p,
-              status: PlayerStatus.AVAILABLE,
+              status: keepStatus ? p.status : PlayerStatus.AVAILABLE,
               currentCourtId: null,
               sessionGamesPlayed: p.sessionGamesPlayed + 1,
               allTimeGamesPlayed: p.allTimeGamesPlayed + 1,
@@ -298,7 +327,8 @@ export const useStore = create<StoreState>()(
           return p;
         });
 
-        const updatedPlayersWithSitouts = incrementSitOuts(newPlayers, matchPlayers);
+        const updatedPlayersWithSitouts = incrementSitOuts(newPlayers, matchPlayers)
+          .map(p => (matchPlayers.has(p.id) ? refreshCatchUpStatus(p) : p));
 
         const newCourts = state.courts.map(c => 
           c.id === match.courtId 
@@ -427,11 +457,18 @@ export const useStore = create<StoreState>()(
         };
       }),
 
-      updatePlayerStatus: (playerId, status) => set((state) => ({
-        players: state.players.map(p => 
-          p.id === playerId ? { ...p, status, queuedAtEpochMs: status === PlayerStatus.AVAILABLE ? Date.now() : p.queuedAtEpochMs } : p
-        )
-      })),
+      updatePlayerStatus: (playerId, status) => set((state) => {
+        // PLAYING may only be set via startBatch / swap — never manually on a benched player
+        if (status === PlayerStatus.PLAYING) {
+          const inMatch = state.matches.some(m => !m.endedAtEpochMs && [...m.teamA, ...m.teamB].includes(playerId));
+          if (!inMatch) return state;
+        }
+        return {
+          players: state.players.map(p =>
+            p.id === playerId ? { ...p, status, queuedAtEpochMs: status === PlayerStatus.AVAILABLE ? Date.now() : p.queuedAtEpochMs } : p
+          )
+        };
+      }),
 
       setLockedPartner: (playerAId, playerBId) => set((state) => ({
         players: state.players.map(p => {
@@ -516,9 +553,21 @@ export const useStore = create<StoreState>()(
       clearHistory: () => set({ sessionHistory: [] }),
 
       initializeSession: (name, courtsCount, customCourtLabels) => {
+        // D6: if this organizer still has a live session, close it properly
+        // (archive to history + mark inactive in cloud) instead of orphaning it.
+        const prev = get();
+        const prevOwner = prev.currentUser?.id || 'guest';
+        if (prev.session && prev.session.isActive && prev.session.ownerUid === prevOwner) {
+          get().endSession();
+        }
+
         const state = get();
         const sessionId = 's_' + Date.now().toString(36);
-        const joinCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+        // D7: always exactly 5 chars, unambiguous alphabet (no 0/O, 1/I/L)
+        const JOIN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        const joinCode = Array.from({ length: 5 }, () =>
+          JOIN_ALPHABET[Math.floor(Math.random() * JOIN_ALPHABET.length)]
+        ).join('');
         
         const newSession: Session = {
           id: sessionId,

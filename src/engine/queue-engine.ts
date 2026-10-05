@@ -103,10 +103,16 @@ export function buildNextBatches(
     const top4 = sorted.slice(0, 4);
 
     // 4. Filter out combinations that split a locked pair
-    //    (if one partner is in the combo, the other must be too)
+    //    (if one partner is in the combo, the other must be too).
+    //    The lock is only enforced when the partner is actually available —
+    //    if the partner is resting / checked out / on court, the player is
+    //    treated as solo so they don't starve.
+    const poolIds = new Set(remainingPool.map((p) => p.id));
     let combos = allCombos.filter((four) => {
       const ids = new Set(four.map((p) => p.id));
-      return four.every((p) => p.lockedPartnerId == null || ids.has(p.lockedPartnerId));
+      return four.every(
+        (p) => p.lockedPartnerId == null || ids.has(p.lockedPartnerId) || !poolIds.has(p.lockedPartnerId)
+      );
     });
 
     if (combos.length === 0) combos = allCombos; // fallback if filtering leaves nothing
@@ -162,10 +168,12 @@ export function buildNextBatches(
 
         const skillDiff = maxSkill - minSkill;
 
-        if (skillDiff === 0) {
+        // Range comparisons (not strict equality) so half-levels from CSV
+        // imports (e.g. 3.5) fall into the correct tier bucket.
+        if (skillDiff <= 0) {
           // Pure same-skill tier match (best default)
           competitivePenalty += 0;
-        } else if (skillDiff === 1) {
+        } else if (skillDiff <= 1) {
           // Adjacent tier mixing (e.g. L4 with L3, or L3 with L2).
           // If anyone in the group has sat out 1+ round, eliminate the penalty completely.
           // Otherwise, a tiny 150 penalty ensures pure tier matches are preferred when everyone is fresh.
@@ -177,7 +185,7 @@ export function buildNextBatches(
               competitivePenalty -= 50;
             }
           }
-        } else if (skillDiff === 2) {
+        } else if (skillDiff <= 2) {
           // 2-tier span (e.g. 1x L5 + 2x L4 + 1x L3 = 8 vs 8 balanced match).
           // If someone has sat out 2+ rounds, eliminate the penalty completely so they never get stranded.
           competitivePenalty += maxSitOutsInGroup >= 2 ? 0 : Math.max(100, 500 - maxSitOutsInGroup * 200);
