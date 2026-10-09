@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer } from '@/types/models';
 import { buildNextBatches, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
+import { initializeTournament } from '@/engine/tournament-engine';
 
 interface StoreState {
   currentUser: { email: string; id: string } | null;
@@ -46,6 +47,7 @@ interface StoreState {
   endSession: () => void;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
+  startTournament: () => void;
   swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
@@ -578,7 +580,7 @@ export const useStore = create<StoreState>()(
           isActive: true,
           courtsPerBatch: courtsCount,
           queueBatchesShown: 2,
-          showNextUpToPlayers: true
+          showNextUpToPlayers: true,
         };
 
         const initialCourts: Court[] = Array.from({ length: courtsCount }).map((_, i) => ({
@@ -600,6 +602,20 @@ export const useStore = create<StoreState>()(
 
         return newSession;
       },
+
+      startTournament: () => set((state) => {
+        if (!state.session || !state.session.sessionType || state.session.sessionType === 'OPEN_PLAY') return state;
+        if (state.session.tournamentState?.phase !== 'REGISTRATION' && state.session.tournamentState) return state;
+
+        const tournamentState = initializeTournament(state.players, state.session.sessionType);
+        
+        return {
+          session: {
+            ...state.session,
+            tournamentState
+          }
+        };
+      }),
 
       swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => set((state) => {
         let oldPlayerId: string;

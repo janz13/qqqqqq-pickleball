@@ -9,6 +9,7 @@ import LeaderboardPanel from '@/components/dashboard/LeaderboardPanel';
 import MatchHistoryPanel from '@/components/dashboard/MatchHistoryPanel';
 import TTSSettingsPanel from '@/components/dashboard/TTSSettingsPanel';
 import AnnouncementPanel from '@/components/dashboard/AnnouncementPanel';
+import TournamentPanel from '@/components/dashboard/TournamentPanel';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { Loader2 } from 'lucide-react';
 
@@ -115,7 +116,7 @@ export default function DashboardPage() {
     <DashboardLayout>
       {(activeTab) => (
         <div className="h-full">
-          {activeTab === 'courts' && <CourtsPanel />}
+          {activeTab === 'courts' && (session.sessionType && session.sessionType !== 'OPEN_PLAY' ? <TournamentPanel /> : <CourtsPanel />)}
           {activeTab === 'roster' && <RosterPanel />}
           {activeTab === 'leaderboard' && <LeaderboardPanel />}
           {activeTab === 'history' && <MatchHistoryPanel />}

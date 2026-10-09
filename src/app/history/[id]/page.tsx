@@ -3,7 +3,7 @@
 import { useStore } from '@/lib/store';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Trophy, ArrowLeft, Clock, Users, Hash, Medal, Award, CheckCircle, Swords, Calendar } from 'lucide-react';
+import { Trophy, ArrowLeft, Clock, Users, Hash, Medal, Award, CheckCircle, Swords, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { Player, Session, Court, Match, Team } from '@/types/models';
 import { getSortedPlayers } from '@/utils/leaderboard';
 
@@ -17,6 +17,7 @@ export default function HistoryPage() {
   const [showCongrats, setShowCongrats] = useState(false);
   const [congratsRank, setCongratsRank] = useState<number | null>(null);
   const [gamesFilter, setGamesFilter] = useState<'all' | 'mine'>('all');
+  const [showGamesBreakdown, setShowGamesBreakdown] = useState(false);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -241,21 +242,27 @@ export default function HistoryPage() {
 
         {/* Match Breakdown / All Games Section */}
         <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
-          <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div 
+            className={`p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${!showGamesBreakdown ? 'border-b-0' : ''}`}
+            onClick={() => setShowGamesBreakdown(!showGamesBreakdown)}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
                 <Swords size={22} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold">Games Breakdown</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  Games Breakdown
+                  {showGamesBreakdown ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {totalMatches} matches recorded across {historyItem.courts.length} courts
                 </p>
               </div>
             </div>
 
-            {myPlayerId && (
-              <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl self-start sm:self-auto">
+            {myPlayerId && showGamesBreakdown && (
+              <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl self-start sm:self-auto" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => setGamesFilter('all')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -280,148 +287,150 @@ export default function HistoryPage() {
             )}
           </div>
 
-          <div className="p-6">
-            {filteredMatches.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                <Swords size={40} className="mx-auto mb-3 opacity-20" />
-                <p className="font-semibold text-base">No matches found</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {gamesFilter === 'mine' ? "You did not play in any recorded matches." : "No matches were recorded for this session."}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredMatches.map((match, idx) => {
-                  const matchNumber = matchNumberMap.get(match.id) ?? (idx + 1);
-                  const court = historyItem.courts.find(c => c.id === match.courtId);
-                  const courtName = match.courtLabel || court?.label || 'Court';
-                  const teamAPlayers = match.teamA.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
-                  const teamBPlayers = match.teamB.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
-                  const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
-                  const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
-                  const isMyMatch = myPlayerId && (match.teamA.includes(myPlayerId) || match.teamB.includes(myPlayerId));
-                  const myTeamWon = myPlayerId && ((match.teamA.includes(myPlayerId) && isWinnerA) || (match.teamB.includes(myPlayerId) && isWinnerB));
-                  
-                  const formatDuration = (start: number, end: number | null): string => {
-                    if (!end || end < start) return '< 1 min';
-                    const totalSec = Math.floor((end - start) / 1000);
-                    const m = Math.floor(totalSec / 60);
-                    const s = totalSec % 60;
-                    return m === 0 ? `${s}s` : `${m}m ${s}s`;
-                  };
-                  const duration = formatDuration(match.startedAtEpochMs, match.endedAtEpochMs);
-                  const endTime = match.endedAtEpochMs 
-                    ? new Date(match.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : 'In progress';
+          {showGamesBreakdown && (
+            <div className="p-6">
+              {filteredMatches.length === 0 ? (
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <Swords size={40} className="mx-auto mb-3 opacity-20" />
+                  <p className="font-semibold text-base">No matches found</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {gamesFilter === 'mine' ? "You did not play in any recorded matches." : "No matches were recorded for this session."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredMatches.map((match, idx) => {
+                    const matchNumber = matchNumberMap.get(match.id) ?? (idx + 1);
+                    const court = historyItem.courts.find(c => c.id === match.courtId);
+                    const courtName = match.courtLabel || court?.label || 'Court';
+                    const teamAPlayers = match.teamA.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
+                    const teamBPlayers = match.teamB.map(pId => historyItem.players.find(p => p.id === pId)).filter(Boolean);
+                    const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
+                    const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
+                    const isMyMatch = myPlayerId && (match.teamA.includes(myPlayerId) || match.teamB.includes(myPlayerId));
+                    const myTeamWon = myPlayerId && ((match.teamA.includes(myPlayerId) && isWinnerA) || (match.teamB.includes(myPlayerId) && isWinnerB));
+                    
+                    const formatDuration = (start: number, end: number | null): string => {
+                      if (!end || end < start) return '< 1 min';
+                      const totalSec = Math.floor((end - start) / 1000);
+                      const m = Math.floor(totalSec / 60);
+                      const s = totalSec % 60;
+                      return m === 0 ? `${s}s` : `${m}m ${s}s`;
+                    };
+                    const duration = formatDuration(match.startedAtEpochMs, match.endedAtEpochMs);
+                    const endTime = match.endedAtEpochMs 
+                      ? new Date(match.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : 'In progress';
 
-                  return (
-                    <div
-                      key={match.id}
-                      className={`rounded-2xl border transition-all overflow-hidden ${
-                        isMyMatch
-                          ? 'border-blue-400/80 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm'
-                          : 'border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30'
-                      }`}
-                    >
-                      <div className="px-5 py-3 bg-gray-100/60 dark:bg-gray-800/60 border-b border-gray-200/60 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                            Match #{matchNumber}
-                          </span>
-                          <span className="font-semibold text-gray-700 dark:text-gray-300">
-                            {courtName}
-                          </span>
-                          {isMyMatch && (
-                            <span className={`px-2 py-0.5 rounded-md font-bold ${
-                              myTeamWon ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                            }`}>
-                              {myTeamWon ? '🏆 Victory' : 'Played'}
+                    return (
+                      <div
+                        key={match.id}
+                        className={`rounded-2xl border transition-all overflow-hidden ${
+                          isMyMatch
+                            ? 'border-blue-400/80 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm'
+                            : 'border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30'
+                        }`}
+                      >
+                        <div className="px-5 py-3 bg-gray-100/60 dark:bg-gray-800/60 border-b border-gray-200/60 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                              Match #{matchNumber}
                             </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 font-medium">
-                          <span className="flex items-center gap-1">
-                            <Clock size={12} /> {duration}
-                          </span>
-                          {match.endedAtEpochMs && <span>{endTime}</span>}
-                        </div>
-                      </div>
-
-                      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Team A */}
-                        <div className={`p-3 rounded-xl border ${
-                          isWinnerA 
-                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60' 
-                            : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Team 1</span>
-                            {isWinnerA && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
-                                <Trophy size={10} /> Winner
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">
+                              {courtName}
+                            </span>
+                            {isMyMatch && (
+                              <span className={`px-2 py-0.5 rounded-md font-bold ${
+                                myTeamWon ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                              }`}>
+                                {myTeamWon ? '🏆 Victory' : 'Played'}
                               </span>
                             )}
                           </div>
-                          <div className="space-y-1.5">
-                            {teamAPlayers.map((p, pIdx) => (
-                              <div key={p?.id || pIdx} className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                  {p?.photoUrl ? (
-                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
-                                  ) : (
-                                    (p?.name || '??').substring(0, 2).toUpperCase()
-                                  )}
-                                </div>
-                                <span className={`text-sm font-semibold truncate ${
-                                  myPlayerId === p?.id ? 'text-blue-600 dark:text-blue-400 font-bold underline' : 'text-gray-800 dark:text-gray-200'
-                                }`}>
-                                  {p?.name || 'Player'}
-                                </span>
-                              </div>
-                            ))}
+                          <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 font-medium">
+                            <span className="flex items-center gap-1">
+                              <Clock size={12} /> {duration}
+                            </span>
+                            {match.endedAtEpochMs && <span>{endTime}</span>}
                           </div>
                         </div>
 
-                        {/* Team B */}
-                        <div className={`p-3 rounded-xl border ${
-                          isWinnerB 
-                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60' 
-                            : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Team 2</span>
-                            {isWinnerB && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
-                                <Trophy size={10} /> Winner
-                              </span>
-                            )}
-                          </div>
-                          <div className="space-y-1.5">
-                            {teamBPlayers.map((p, pIdx) => (
-                              <div key={p?.id || pIdx} className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                  {p?.photoUrl ? (
-                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
-                                  ) : (
-                                    (p?.name || '??').substring(0, 2).toUpperCase()
-                                  )}
-                                </div>
-                                <span className={`text-sm font-semibold truncate ${
-                                  myPlayerId === p?.id ? 'text-blue-600 dark:text-blue-400 font-bold underline' : 'text-gray-800 dark:text-gray-200'
-                                }`}>
-                                  {p?.name || 'Player'}
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Team A */}
+                          <div className={`p-3 rounded-xl border ${
+                            isWinnerA 
+                              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60' 
+                              : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Team 1</span>
+                              {isWinnerA && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
+                                  <Trophy size={10} /> Winner
                                 </span>
-                              </div>
-                            ))}
+                              )}
+                            </div>
+                            <div className="space-y-1.5">
+                              {teamAPlayers.map((p, pIdx) => (
+                                <div key={p?.id || pIdx} className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                    {p?.photoUrl ? (
+                                      <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                    ) : (
+                                      (p?.name || '??').substring(0, 2).toUpperCase()
+                                    )}
+                                  </div>
+                                  <span className={`text-sm font-semibold truncate ${
+                                    myPlayerId === p?.id ? 'text-blue-600 dark:text-blue-400 font-bold underline' : 'text-gray-800 dark:text-gray-200'
+                                  }`}>
+                                    {p?.name || 'Player'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Team B */}
+                          <div className={`p-3 rounded-xl border ${
+                            isWinnerB 
+                              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800/60' 
+                              : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Team 2</span>
+                              {isWinnerB && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
+                                  <Trophy size={10} /> Winner
+                                </span>
+                              )}
+                            </div>
+                            <div className="space-y-1.5">
+                              {teamBPlayers.map((p, pIdx) => (
+                                <div key={p?.id || pIdx} className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                    {p?.photoUrl ? (
+                                      <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                    ) : (
+                                      (p?.name || '??').substring(0, 2).toUpperCase()
+                                    )}
+                                  </div>
+                                  <span className={`text-sm font-semibold truncate ${
+                                    myPlayerId === p?.id ? 'text-blue-600 dark:text-blue-400 font-bold underline' : 'text-gray-800 dark:text-gray-200'
+                                  }`}>
+                                    {p?.name || 'Player'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden p-6">

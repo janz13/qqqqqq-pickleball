@@ -82,6 +82,50 @@ export interface Match {
   scoreB: number | null;
 }
 
+export enum SessionType {
+  OPEN_PLAY = 'OPEN_PLAY',
+  TOURNAMENT_DOUBLES = 'TOURNAMENT_DOUBLES',
+  TOURNAMENT_SINGLE_ELIM = 'TOURNAMENT_SINGLE_ELIM',
+  TOURNAMENT_CHAOS = 'TOURNAMENT_CHAOS',
+}
+
+export interface TournamentPair {
+  id: string;
+  player1Id: string;
+  player2Id: string;
+  name?: string;
+  seed?: number;
+  poolPlayWins: number;
+  poolPlayPointDiff: number;
+  poolPlayPointsScored: number;
+}
+
+export interface TournamentMatch {
+  id: string;
+  round: number;
+  isLosersBracket: boolean;
+  matchNumber: number;
+  nextMatchId: string | null;
+  nextLoserMatchId: string | null;
+  teamAId: string | null;
+  teamBId: string | null;
+  courtId: string | null;
+  status: 'PENDING' | 'READY' | 'IN_PROGRESS' | 'COMPLETED';
+  startedAtEpochMs: number | null;
+  endedAtEpochMs: number | null;
+  winnerTeamId: string | null;
+  scoreA: number | null;
+  scoreB: number | null;
+  isBestOf3: boolean;
+  games: { winnerId: string; scoreA: number; scoreB: number }[];
+}
+
+export interface TournamentState {
+  pairs: TournamentPair[];
+  matches: TournamentMatch[];
+  phase: 'REGISTRATION' | 'POOL_PLAY' | 'BRACKET' | 'COMPLETED';
+}
+
 export interface Session {
   id: string;
   joinCode: string;
@@ -95,6 +139,8 @@ export interface Session {
   showNextUpToPlayers?: boolean;
   currentAnnouncement?: string;
   announcementTimestamp?: number;
+  sessionType?: SessionType;
+  tournamentState?: TournamentState;
 }
 
 export interface ProposedMatch {

@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, Play } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { SessionType } from '@/types/models';
 
 export default function NewSessionPage() {
   const router = useRouter();
   const [name, setName] = useState('Weekend Open Play');
   const [courtsCount, setCourtsCount] = useState(4);
+  const [sessionType, setSessionType] = useState<SessionType>(SessionType.OPEN_PLAY);
   const [matchingMode, setMatchingMode] = useState<'balanced' | 'competitive'>('balanced');
   const [courtNames, setCourtNames] = useState<string[]>(['Court 1', 'Court 2', 'Court 3', 'Court 4']);
   const [showCustomNames, setShowCustomNames] = useState(false);
@@ -34,15 +36,18 @@ export default function NewSessionPage() {
       ? courtNames.map((cn, i) => cn.trim() || `Court ${i + 1}`)
       : undefined;
     const newSession = initializeSession(name, courtsCount, finalLabels);
-    updateSession(newSession.id, { matchingMode });
+    updateSession(newSession.id, { 
+      matchingMode: sessionType === SessionType.OPEN_PLAY ? matchingMode : undefined,
+      sessionType 
+    });
     router.push(`/dashboard/${newSession.id}`);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-transparent">
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-transparent py-12">
       <div className="absolute inset-0 z-[-1] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950"></div>
       
-      <div className="glass dark:glass-dark rounded-[2.5rem] p-10 max-w-md w-full animate-slide-up shadow-2xl border-white/40">
+      <div className="glass dark:glass-dark rounded-[2.5rem] p-8 max-w-lg w-full animate-slide-up shadow-2xl border-white/40 max-h-[90vh] overflow-y-auto">
         <h1 className="text-4xl font-black mb-8 text-center tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">New Session</h1>
         
         <form onSubmit={handleStart} className="space-y-8">
@@ -93,63 +98,99 @@ export default function NewSessionPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex justify-between items-center px-1">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                Court Names (Optional)
-              </label>
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 ml-1 uppercase tracking-wider">Session Format</label>
+            <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
               <button
                 type="button"
-                onClick={() => setShowCustomNames(!showCustomNames)}
-                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                onClick={() => setSessionType(SessionType.OPEN_PLAY)}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${sessionType === SessionType.OPEN_PLAY ? 'bg-white dark:bg-slate-700 shadow text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
               >
-                {showCustomNames ? 'Use default names' : 'Customize court names'}
+                Open Play
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionType(SessionType.TOURNAMENT_DOUBLES)}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${sessionType === SessionType.TOURNAMENT_DOUBLES || sessionType === SessionType.TOURNAMENT_SINGLE_ELIM || sessionType === SessionType.TOURNAMENT_CHAOS ? 'bg-white dark:bg-slate-700 shadow text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              >
+                Tournament
               </button>
             </div>
+          </div>
 
-            {showCustomNames && (
-              <div className="grid grid-cols-2 gap-2.5 p-3 bg-white/60 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 max-h-52 overflow-y-auto">
-                {Array.from({ length: courtsCount }).map((_, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Court {i + 1}</span>
-                    <input
-                      type="text"
-                      value={courtNames[i] || ''}
-                      onChange={e => {
-                        const next = [...courtNames];
-                        next[i] = e.target.value;
-                        setCourtNames(next);
-                      }}
-                      placeholder={`Court ${i + 1}`}
-                      maxLength={30}
-                      className="px-3 py-2 text-sm font-bold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-                    />
-                  </div>
-                ))}
+          {sessionType === SessionType.OPEN_PLAY ? (
+            <div className="space-y-3 animate-fade-in">
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 ml-1 uppercase tracking-wider">Queue Mode</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMatchingMode('balanced')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'balanced' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
+                >
+                  <div className="font-bold text-slate-800 dark:text-slate-100">Balanced</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Standard mixer. Focuses on fair wait times and partner variety.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMatchingMode('competitive')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'competitive' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
+                >
+                  <div className="font-bold text-slate-800 dark:text-slate-100">Competitive</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Ladder style. Groups exact skill levels & matches winners together.</div>
+                </button>
               </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 ml-1 uppercase tracking-wider">Queue Mode</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setMatchingMode('balanced')}
-                className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'balanced' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
-              >
-                <div className="font-bold text-slate-800 dark:text-slate-100">Balanced</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Standard mixer. Focuses on fair wait times and partner variety.</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMatchingMode('competitive')}
-                className={`p-4 rounded-2xl border-2 text-left transition-all ${matchingMode === 'competitive' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 bg-white/50 dark:bg-slate-900/50'}`}
-              >
-                <div className="font-bold text-slate-800 dark:text-slate-100">Competitive</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">Ladder style. Groups exact skill levels & matches winners together.</div>
-              </button>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3 animate-fade-in">
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 ml-1 uppercase tracking-wider">Tournament Structure</label>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSessionType(SessionType.TOURNAMENT_DOUBLES)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${sessionType === SessionType.TOURNAMENT_DOUBLES ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 bg-white/50 dark:bg-slate-900/50'}`}
+                >
+                  <div className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg">🏆 The Grand Slam</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">
+                    Our premium two-stage tournament format for a full day of play.
+                  </div>
+                  <ul className="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 list-disc list-inside">
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">Phase 1:</span> 4-game pool play for all teams to determine seeding.</li>
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">Phase 2:</span> Double Elimination Bracket (lose twice and you're out).</li>
+                    <li>Teams stay together for the entire event.</li>
+                  </ul>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionType(SessionType.TOURNAMENT_SINGLE_ELIM)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${sessionType === SessionType.TOURNAMENT_SINGLE_ELIM ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 bg-white/50 dark:bg-slate-900/50'}`}
+                >
+                  <div className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg">⚡ Knockout Sprint</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">
+                    A fast, high-stakes classic elimination bracket.
+                  </div>
+                  <ul className="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 list-disc list-inside">
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">Format:</span> Pure Single Elimination (lose once and you're out).</li>
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">The Finals:</span> Semifinals and Finals are played as "Best of 3".</li>
+                    <li>Includes a 3rd-place Bronze Medal match.</li>
+                  </ul>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionType(SessionType.TOURNAMENT_CHAOS)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all ${sessionType === SessionType.TOURNAMENT_CHAOS ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 scale-[1.02]' : 'border-slate-200 dark:border-slate-700 hover:border-amber-300 bg-white/50 dark:bg-slate-900/50'}`}
+                >
+                  <div className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg">🌪️ Chaos Roulette</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed font-medium">
+                    A total random event from start to finish where luck plays a major role.
+                  </div>
+                  <ul className="text-xs text-slate-500 dark:text-slate-400 mt-2 space-y-1 list-disc list-inside">
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">Format:</span> Survival elimination. Winners advance, losers are out.</li>
+                    <li><span className="font-semibold text-slate-600 dark:text-slate-300">New Partners:</span> Every single round, all survivors are randomly mixed into new pairs!</li>
+                    <li>No permanent teams. Only the luckiest and most adaptable survive to the Final Four.</li>
+                  </ul>
+                </button>
+              </div>
+            </div>
+          )}
 
           <button 
             type="submit"
