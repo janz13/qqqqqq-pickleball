@@ -104,12 +104,22 @@ export default function TournamentPanel() {
 
       {phase === 'POOL_PLAY' && (
         <div className="flex flex-col gap-4">
-          <h3 className="text-xl font-semibold">Pool Play Matches</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold">Pool Play Matches</h3>
+            {matches.filter(m => m.id.startsWith('pool_match_') && m.status === 'PENDING').length === 0 && (
+              <button 
+                onClick={handleStartPoolPlay}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Generate Next Pool Round
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {matches.filter(m => m.round === 0).map(match => (
+            {matches.filter(m => m.id.startsWith('pool_match_')).map(match => (
               <div key={match.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">Match {match.matchNumber}</span>
+                  <span className="text-sm text-gray-500">Match {match.matchNumber} (Round {match.round})</span>
                   <span className="text-xs px-2 py-1 bg-gray-100 rounded-md font-medium">{match.status}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-gray-100">
@@ -122,8 +132,16 @@ export default function TournamentPanel() {
                 </div>
               </div>
             ))}
-            {matches.filter(m => m.round === 0).length === 0 && (
-              <p className="text-gray-500">No pool matches scheduled yet.</p>
+            {matches.filter(m => m.id.startsWith('pool_match_')).length === 0 && (
+              <div className="col-span-full flex flex-col items-center justify-center p-8 text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm gap-3">
+                <p>No pool matches scheduled yet.</p>
+                <button 
+                  onClick={handleStartPoolPlay}
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  Start Pool Play
+                </button>
+              </div>
             )}
           </div>
         </div>

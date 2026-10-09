@@ -65,6 +65,11 @@ export function initializeTournament(players: Player[], type: SessionType): Tour
     state = generateBracket(state, type);
   }
 
+  // For Doubles (Grand Slam), generate the first pool round immediately
+  if (type === SessionType.TOURNAMENT_DOUBLES) {
+    state.matches = buildPoolPlayRound(state, 4);
+  }
+
   return state;
 }
 
