@@ -26,7 +26,7 @@ export function initializeTournament(players: Player[], type: SessionType): Tour
   let phase: 'REGISTRATION' | 'POOL_PLAY' | 'BRACKET' | 'COMPLETED' = 'BRACKET';
   if (type === SessionType.TOURNAMENT_DOUBLES) phase = 'POOL_PLAY';
 
-  let matches: TournamentMatch[] = [];
+  const matches: TournamentMatch[] = [];
 
   // For Chaos Roulette, build the first round immediately as "BRACKET" phase.
   if (type === SessionType.TOURNAMENT_CHAOS) {
@@ -54,11 +54,18 @@ export function initializeTournament(players: Player[], type: SessionType): Tour
     }
   }
 
-  return {
+  let state: TournamentState = {
     pairs,
     matches,
     phase
   };
+
+  // For Knockout Sprint, generate the bracket immediately
+  if (type === SessionType.TOURNAMENT_SINGLE_ELIM) {
+    state = generateBracket(state, type);
+  }
+
+  return state;
 }
 
 /**

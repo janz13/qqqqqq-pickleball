@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Match, Player, Team } from '@/types/models';
 import { Trophy } from 'lucide-react';
 
@@ -136,7 +137,6 @@ export const ScoreDialog: React.FC<Props> = ({ match, players, onSubmit, onClose
     </div>
   );
   if (typeof window !== 'undefined') {
-    const { createPortal } = require('react-dom');
     return createPortal(modal, document.body);
   }
   return null;

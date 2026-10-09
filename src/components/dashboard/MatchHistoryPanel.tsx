@@ -61,7 +61,7 @@ export default function MatchHistoryPanel() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser, session?.ownerUid]);
+  }, [currentUser, session?.ownerUid, activeUid]);
 
   const allPastSessions = Array.from(new Map(
     [

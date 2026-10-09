@@ -9,9 +9,26 @@ export default function TournamentPanel() {
   const state = session?.tournamentState;
 
   if (!state) {
+    const canStart = session?.sessionType && session.sessionType !== 'OPEN_PLAY';
+    
     return (
-      <div className="flex items-center justify-center h-full p-8 text-gray-500">
-        <p>No active tournament state.</p>
+      <div className="flex flex-col items-center justify-center h-full p-8 text-gray-500 gap-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Tournament Setup</h2>
+          <p>Make sure all players have been added and checked in through the Roster tab before starting.</p>
+        </div>
+        
+        {canStart ? (
+          <button 
+            onClick={() => useStore.getState().startTournament()}
+            disabled={players.length < 4}
+            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm"
+          >
+            {players.length < 4 ? 'Need at least 4 players' : 'Start Tournament'}
+          </button>
+        ) : (
+          <p className="text-red-500 font-medium">This session is set to Open Play, not a tournament mode.</p>
+        )}
       </div>
     );
   }
@@ -19,7 +36,18 @@ export default function TournamentPanel() {
   const { phase, pairs, matches } = state;
 
   const handleStartPoolPlay = () => {
-    // TODO: Implement starting pool play
+    if (session && state) {
+      import('@/engine/tournament-engine').then(({ buildPoolPlayRound }) => {
+        const initialPoolMatches = buildPoolPlayRound(state, 4);
+        useStore.getState().updateSession(session.id, {
+          tournamentState: {
+            ...state,
+            matches: [...state.matches, ...initialPoolMatches],
+            phase: 'POOL_PLAY'
+          }
+        });
+      });
+    }
   };
 
   const getTeamName = (teamId: string | null) => {

@@ -46,17 +46,22 @@ export default function RosterPanel() {
       if (!text) return;
 
       const lines = text.split('\n');
+      const currentPlayers = useStore.getState().players;
+      const addedNames = new Set(currentPlayers.map(p => p.name.trim().toLowerCase()));
+
       lines.slice(1).forEach(line => {
         const [name, skill] = line.split(',');
         if (name && name.trim()) {
           const cleanName = name.trim();
-          if (!players.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
+          const nameKey = cleanName.toLowerCase();
+          if (!addedNames.has(nameKey)) {
+            addedNames.add(nameKey);
             const skillLevel = skill ? parseFloat(skill.trim()) : 3;
             addPlayer(createPlayer({
               id: 'p_' + Math.random().toString(36).substr(2, 9),
               name: cleanName,
               skillLevel: isNaN(skillLevel) ? 3 : skillLevel,
-              queuedAtEpochMs: Date.now() - (Math.random() * 60000), // Randomize within the last minute so they enter the queue in a scrambled order
+              queuedAtEpochMs: Date.now() - (Math.random() * 60000),
               joinedSessionAtEpochMs: Date.now(),
               isLatecomer: false,
               status: PlayerStatus.AVAILABLE
@@ -73,7 +78,8 @@ export default function RosterPanel() {
     e.preventDefault();
     if (!newPlayerName.trim()) return;
 
-    if (players.some(p => p.name.toLowerCase() === newPlayerName.trim().toLowerCase())) {
+    const currentPlayers = useStore.getState().players;
+    if (currentPlayers.some(p => p.name.toLowerCase() === newPlayerName.trim().toLowerCase())) {
         setNameError('A player with this name already exists');
         return;
     }

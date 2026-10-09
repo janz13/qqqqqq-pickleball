@@ -16,6 +16,7 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
   const [editedLabel, setEditedLabel] = useState(court.label);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditedLabel(court.label);
   }, [court.label]);
 
