@@ -178,7 +178,36 @@ export default function TournamentPanel() {
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-semibold">Bracket Phase</h3>
-            <p className="text-sm text-gray-500">Tap a team to advance them to the next round.</p>
+            <div className="flex items-center gap-4">
+              <p className="text-sm text-gray-500">Tap a team to advance them to the next round.</p>
+              {session?.sessionType === 'TOURNAMENT_CHAOS' && (
+                (() => {
+                  const bracketMatches = matches.filter(m => !m.id.startsWith('pool_match_'));
+                  const maxRound = Math.max(0, ...bracketMatches.map(m => m.round));
+                  const currentRoundMatches = bracketMatches.filter(m => m.round === maxRound);
+                  const canAdvance = currentRoundMatches.length > 0 && currentRoundMatches.every(m => m.status === 'COMPLETED');
+                  
+                  if (canAdvance) {
+                    return (
+                      <button 
+                        onClick={() => {
+                          import('@/engine/tournament-engine').then(({ advanceChaosRound }) => {
+                            const newState = advanceChaosRound(state, players);
+                            useStore.getState().updateSession(session.id, {
+                              tournamentState: newState
+                            });
+                          });
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Generate Next Chaos Round
+                      </button>
+                    );
+                  }
+                  return null;
+                })()
+              )}
+            </div>
           </div>
           <BracketTree matches={mappedBracketMatches.filter(m => !m.id.startsWith('pool_match_'))} onMatchClick={handleAdvanceBracketMatch} />
         </div>

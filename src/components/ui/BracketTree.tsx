@@ -41,12 +41,11 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
     .map(Number)
     .sort((a, b) => a - b);
 
-  const getRoundName = (idx: number, totalRounds: number) => {
-    const reverse = totalRounds - idx - 1;
-    if (reverse === 0) return 'Finals';
-    if (reverse === 1) return 'Semifinals';
-    if (reverse === 2) return 'Quarterfinals';
-    return `Round ${idx + 1}`;
+  const getRoundName = (idx: number, roundNum: number, matchCount: number) => {
+    if (matchCount === 1) return 'Finals';
+    if (matchCount === 2) return 'Semifinals';
+    if (matchCount === 3 || matchCount === 4) return 'Quarterfinals';
+    return `Round ${roundNum}`;
   };
 
   return (
@@ -57,7 +56,7 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
         return (
           <div key={round} className="flex flex-col justify-around min-w-[260px] relative">
             <h3 className="absolute -top-6 w-full text-center text-xs font-bold text-gray-400 uppercase tracking-widest">
-              {getRoundName(idx, roundNumbers.length)}
+              {getRoundName(idx, round, roundMatches.length)}
             </h3>
 
             <div className="flex flex-col justify-around h-full gap-8">
