@@ -67,33 +67,19 @@ export default function HomePage() {
       return;
     }
 
-    if (supabase) {
-      // 1. Check if username exists
-      const { data } = await supabase.from('organizers').select('*').eq('username', uname).single();
+    try {
+      const { loginOrganizer } = await import('@/app/actions');
+      const res = await loginOrganizer(uname, password);
       
-      if (data) {
-        // User exists, check password
-        if (data.password === password) {
-          setCurrentUser({ email: data.username, id: data.username });
-          setAuthMode('initial');
-        } else {
-          alert("Incorrect password for this username!");
-        }
-      } else {
-        // User doesn't exist, create it!
-        const { error } = await supabase.from('organizers').insert([{ username: uname, password }]);
-        if (error) {
-          alert(`Error creating account: ${error.message}`);
-        } else {
-          alert("Account created successfully!");
-          setCurrentUser({ email: uname, id: uname });
-          setAuthMode('initial');
-        }
+      if (res.error) {
+        alert(res.error);
+      } else if (res.success) {
+        setCurrentUser({ email: uname, id: uname });
+        setAuthMode('initial');
       }
-    } else {
-      // Offline fallback
-      setCurrentUser({ email: uname, id: uname });
-      setAuthMode('initial');
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred during login.");
     }
   };
 
@@ -217,7 +203,7 @@ export default function HomePage() {
                   <p className="text-xs text-blue-500 dark:text-blue-400 font-bold uppercase tracking-wider">Logged in as</p>
                   <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{currentUser.email}</p>
                 </div>
-                <button onClick={() => setCurrentUser(null)} className="p-3 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-500 rounded-xl transition-colors shadow-sm">
+                <button onClick={async () => { setCurrentUser(null); try { const { logoutOrganizer } = await import('@/app/actions'); await logoutOrganizer(); } catch(e) {} }} className="p-3 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-500 rounded-xl transition-colors shadow-sm">
                   <LogOut size={20} />
                 </button>
               </div>
@@ -409,3 +395,4 @@ export default function HomePage() {
     </div>
   );
 }
+

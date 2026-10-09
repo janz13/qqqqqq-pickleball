@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.12",
     "lucide-react": "^1.33.0",
     "next": "16.3.2",
     "qrcode.react": "^4.2.0",
@@ -23,6 +25,7 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
