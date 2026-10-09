@@ -8,6 +8,8 @@ export interface TournamentMatch {
   position: number;
   player1?: string | null;
   player2?: string | null;
+  player1Id?: string | null;
+  player2Id?: string | null;
   score1?: number | null;
   score2?: number | null;
   winner?: string | null;
@@ -22,9 +24,10 @@ export interface TournamentPair {
 export interface BracketTreeProps {
   matches: TournamentMatch[];
   pairs?: TournamentPair[];
+  onMatchClick?: (matchId: string, winnerTeamId: string) => void;
 }
 
-export function BracketTree({ matches, pairs }: BracketTreeProps) {
+export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) {
   // Group matches by round
   const rounds = matches.reduce((acc, match) => {
     if (!acc[match.round]) {
@@ -66,7 +69,14 @@ export function BracketTree({ matches, pairs }: BracketTreeProps) {
                     {/* The Match Card */}
                     <div className="w-full bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden z-10 transition-shadow hover:shadow-md">
                       <div
+                        onClick={() => {
+                          if (onMatchClick && match.player1 && !match.winner && match.player2) {
+                            onMatchClick(match.id, match.player1Id!);
+                          }
+                        }}
                         className={`px-4 py-3 flex justify-between items-center border-b border-gray-100 ${
+                          match.player1 && !match.winner && match.player2 ? 'cursor-pointer hover:bg-indigo-50' : ''
+                        } ${
                           match.winner === match.player1 && match.winner ? 'bg-indigo-50/50 font-semibold text-indigo-900' : 'text-gray-700'
                         }`}
                       >
@@ -74,7 +84,14 @@ export function BracketTree({ matches, pairs }: BracketTreeProps) {
                         <span className="text-sm font-medium opacity-80">{match.score1 ?? '-'}</span>
                       </div>
                       <div
+                        onClick={() => {
+                          if (onMatchClick && match.player2 && !match.winner && match.player1) {
+                            onMatchClick(match.id, match.player2Id!);
+                          }
+                        }}
                         className={`px-4 py-3 flex justify-between items-center ${
+                          match.player2 && !match.winner && match.player1 ? 'cursor-pointer hover:bg-indigo-50' : ''
+                        } ${
                           match.winner === match.player2 && match.winner ? 'bg-indigo-50/50 font-semibold text-indigo-900' : 'text-gray-700'
                         }`}
                       >

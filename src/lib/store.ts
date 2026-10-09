@@ -47,7 +47,7 @@ interface StoreState {
   endSession: () => void;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
-  startTournament: () => void;
+  startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED') => void;
   swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
@@ -603,11 +603,12 @@ export const useStore = create<StoreState>()(
         return newSession;
       },
 
-      startTournament: () => set((state) => {
+      startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED') => set((state) => {
         if (!state.session || !state.session.sessionType || state.session.sessionType === 'OPEN_PLAY') return state;
         if (state.session.tournamentState?.phase !== 'REGISTRATION' && state.session.tournamentState) return state;
 
-        const tournamentState = initializeTournament(state.players, state.session.sessionType);
+        const strategy = pairingStrategy || 'RANDOM';
+        const tournamentState = initializeTournament(state.players, state.session.sessionType, strategy);
         
         return {
           session: {

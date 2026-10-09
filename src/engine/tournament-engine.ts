@@ -3,23 +3,68 @@ import { Player, TournamentState, TournamentPair, TournamentMatch, SessionType, 
 /**
  * Generates an initial tournament state from a list of players.
  */
-export function initializeTournament(players: Player[], type: SessionType): TournamentState {
+export function initializeTournament(players: Player[], type: SessionType, pairingStrategy: 'RANDOM' | 'LOCKED' = 'RANDOM'): TournamentState {
   const availablePlayers = players.filter(p => p.status !== 'CHECKED_OUT');
-  const shuffled = [...availablePlayers].sort(() => Math.random() - 0.5);
   
   const pairs: TournamentPair[] = [];
-  for (let i = 0; i < shuffled.length; i += 2) {
-    if (i + 1 < shuffled.length) {
-      pairs.push({
-        id: `pair_${pairs.length + 1}`,
-        player1Id: shuffled[i].id,
-        player2Id: shuffled[i + 1].id,
-        name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
-        seed: pairs.length + 1,
-        poolPlayWins: 0,
-        poolPlayPointDiff: 0,
-        poolPlayPointsScored: 0
-      });
+  
+  if (pairingStrategy === 'LOCKED') {
+    // First, pair up locked partners
+    const pairedIds = new Set<string>();
+    for (const p of availablePlayers) {
+      if (pairedIds.has(p.id)) continue;
+      
+      if (p.lockedPartnerId && !pairedIds.has(p.lockedPartnerId)) {
+        const partner = availablePlayers.find(x => x.id === p.lockedPartnerId);
+        if (partner) {
+          pairs.push({
+            id: `pair_${pairs.length + 1}`,
+            player1Id: p.id,
+            player2Id: partner.id,
+            name: `${p.name} & ${partner.name}`,
+            seed: pairs.length + 1,
+            poolPlayWins: 0,
+            poolPlayPointDiff: 0,
+            poolPlayPointsScored: 0
+          });
+          pairedIds.add(p.id);
+          pairedIds.add(partner.id);
+        }
+      }
+    }
+    
+    // Then randomly pair the rest
+    const remaining = availablePlayers.filter(p => !pairedIds.has(p.id)).sort(() => Math.random() - 0.5);
+    for (let i = 0; i < remaining.length; i += 2) {
+      if (i + 1 < remaining.length) {
+        pairs.push({
+          id: `pair_${pairs.length + 1}`,
+          player1Id: remaining[i].id,
+          player2Id: remaining[i + 1].id,
+          name: `${remaining[i].name} & ${remaining[i + 1].name}`,
+          seed: pairs.length + 1,
+          poolPlayWins: 0,
+          poolPlayPointDiff: 0,
+          poolPlayPointsScored: 0
+        });
+      }
+    }
+  } else {
+    // Completely random
+    const shuffled = [...availablePlayers].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < shuffled.length; i += 2) {
+      if (i + 1 < shuffled.length) {
+        pairs.push({
+          id: `pair_${pairs.length + 1}`,
+          player1Id: shuffled[i].id,
+          player2Id: shuffled[i + 1].id,
+          name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
+          seed: pairs.length + 1,
+          poolPlayWins: 0,
+          poolPlayPointDiff: 0,
+          poolPlayPointsScored: 0
+        });
+      }
     }
   }
 

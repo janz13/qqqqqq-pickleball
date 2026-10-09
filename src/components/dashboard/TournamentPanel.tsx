@@ -19,13 +19,27 @@ export default function TournamentPanel() {
         </div>
         
         {canStart ? (
-          <button 
-            onClick={() => useStore.getState().startTournament()}
-            disabled={players.length < 4}
-            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm"
-          >
-            {players.length < 4 ? 'Need at least 4 players' : 'Start Tournament'}
-          </button>
+          <>
+            <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+              <button 
+                onClick={() => useStore.getState().startTournament('RANDOM')}
+                disabled={players.length < 4}
+                className="flex-1 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm flex flex-col items-center justify-center gap-1"
+              >
+                <span>Random Pairs</span>
+                <span className="text-xs font-normal opacity-80">Ignore duo lock</span>
+              </button>
+              <button 
+                onClick={() => useStore.getState().startTournament('LOCKED')}
+                disabled={players.length < 4}
+                className="flex-1 px-6 py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm flex flex-col items-center justify-center gap-1"
+              >
+                <span>Custom Pairs</span>
+                <span className="text-xs font-normal opacity-80">Use Duo Queue locks</span>
+              </button>
+            </div>
+            {players.length < 4 && <p className="text-sm text-red-500 font-medium mt-2">Need at least 4 players</p>}
+          </>
         ) : (
           <p className="text-red-500 font-medium">This session is set to Open Play, not a tournament mode.</p>
         )}
@@ -61,6 +75,17 @@ export default function TournamentPanel() {
     return 'Team ' + teamId;
   };
 
+  const handleAdvanceBracketMatch = (matchId: string, winnerTeamId: string) => {
+    if (session && state) {
+      import('@/engine/tournament-engine').then(({ advanceMatchWinner }) => {
+        const newState = advanceMatchWinner(state, matchId, winnerTeamId);
+        useStore.getState().updateSession(session.id, {
+          tournamentState: newState
+        });
+      });
+    }
+  };
+
   const mappedBracketMatches = matches.map(m => {
     const p1Name = getTeamName(m.teamAId);
     const p2Name = getTeamName(m.teamBId);
@@ -75,6 +100,8 @@ export default function TournamentPanel() {
       position: m.matchNumber,
       player1: p1Name,
       player2: p2Name,
+      player1Id: m.teamAId,
+      player2Id: m.teamBId,
       score1: m.scoreA,
       score2: m.scoreB,
       winner: winnerName
@@ -149,15 +176,18 @@ export default function TournamentPanel() {
 
       {phase === 'BRACKET' && (
         <div className="flex flex-col gap-4">
-          <h3 className="text-xl font-semibold">Bracket Phase</h3>
-          <BracketTree matches={mappedBracketMatches} />
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold">Bracket Phase</h3>
+            <p className="text-sm text-gray-500">Tap a team to advance them to the next round.</p>
+          </div>
+          <BracketTree matches={mappedBracketMatches.filter(m => !m.id.startsWith('pool_match_'))} onMatchClick={handleAdvanceBracketMatch} />
         </div>
       )}
       
       {phase === 'COMPLETED' && (
         <div className="flex flex-col gap-4">
           <h3 className="text-xl font-semibold">Tournament Completed</h3>
-          <BracketTree matches={mappedBracketMatches} />
+          <BracketTree matches={mappedBracketMatches.filter(m => !m.id.startsWith('pool_match_'))} />
         </div>
       )}
     </div>
