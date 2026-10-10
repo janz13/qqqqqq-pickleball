@@ -143,14 +143,14 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
         </div>
       )}
 
-      {/* Bracket Grid */}
       <div className="w-full bg-gray-50/30 rounded-xl overflow-hidden border border-gray-100 min-h-[600px] relative">
         <TransformWrapper
           initialScale={1}
-          minScale={0.2}
+          minScale={0.1}
           maxScale={3}
           centerOnInit={true}
-          pinch={{ step: 5 }}
+          wheel={{ step: 0.02 }}
+          pinch={{ step: 2 }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
             <>
