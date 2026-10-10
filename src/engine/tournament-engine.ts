@@ -131,11 +131,13 @@ export function buildPoolPlayRound(state: TournamentState, courtsCount: number):
   const newMatches: TournamentMatch[] = [];
   const activeMatchIds = state.matches.length;
 
+  const nextRoundNum = state.matches.length > 0 ? Math.max(...state.matches.map(m => m.round)) + 1 : 1;
+
   for (let i = 0; i < sortedPairs.length; i += 2) {
     if (i + 1 < sortedPairs.length) {
       newMatches.push({
         id: `pool_match_${activeMatchIds + (i/2) + 1}`,
-        round: Math.floor(state.matches.length / (state.pairs.length / 2)) + 1,
+        round: nextRoundNum,
         isLosersBracket: false,
         matchNumber: activeMatchIds + (i/2) + 1,
         nextMatchId: null,
@@ -215,7 +217,7 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
           winnerTeamId: null,
           scoreA: null,
           scoreB: null,
-          isBestOf3: false,
+          isBestOf3: type === SessionType.TOURNAMENT_SINGLE_ELIM && matchesInRound <= 2,
           games: []
         };
         matchNodes[r].push(m);

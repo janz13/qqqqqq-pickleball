@@ -5,7 +5,8 @@ import { useStore } from '@/lib/store';
 import { CourtStatus, PlayerStatus, Team } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
-import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter } from 'lucide-react';
+import { BracketTree } from '@/components/ui/BracketTree';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
@@ -24,7 +25,7 @@ export default function PlayerMonitorPage() {
   
   const lastMatchId = useRef<string | null>(null);
   
-  const [activeTab, setActiveTab] = useState<'queue' | 'games' | 'leaderboards'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'games' | 'leaderboards' | 'tournament'>('queue');
   const [gamesFilter, setGamesFilter] = useState<'all' | 'mine'>('all');
 
   // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
@@ -365,6 +366,14 @@ export default function PlayerMonitorPage() {
           >
             <Trophy size={18} /> Leaderboards
           </button>
+          {session.sessionType && session.sessionType !== 'OPEN_PLAY' && (
+            <button 
+              onClick={() => setActiveTab('tournament')}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'tournament' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            >
+              <GitMerge size={18} /> Tournament
+            </button>
+          )}
         </div>
       </div>
 
@@ -794,6 +803,57 @@ export default function PlayerMonitorPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* TOURNAMENT TAB */}
+      {activeTab === 'tournament' && session.tournamentState && (
+        <main className="max-w-7xl mx-auto px-4">
+          <div className="space-y-6">
+            <h2 className="text-3xl font-black tracking-tight mb-2">Tournament Bracket</h2>
+            
+            {session.tournamentState.phase === 'REGISTRATION' && (
+              <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
+                <p className="text-slate-400">Tournament has not started yet. Stay tuned!</p>
+              </div>
+            )}
+            
+            {session.tournamentState.phase === 'POOL_PLAY' && (
+              <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
+                <p className="text-slate-400">Currently in Pool Play phase. Watch the active courts for your next match!</p>
+              </div>
+            )}
+
+            {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (
+              <div className="overflow-x-auto pb-4">
+                <BracketTree 
+                  matches={session.tournamentState.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
+                    const getTeamName = (teamId: string | null) => {
+                      if (!teamId) return null;
+                      const pair = session.tournamentState!.pairs.find(p => p.id === teamId);
+                      if (pair?.name) return pair.name;
+                      const p1 = players.find(p => p.id === pair?.player1Id);
+                      const p2 = players.find(p => p.id === pair?.player2Id);
+                      if (p1 && p2) return `${p1.name} & ${p2.name}`;
+                      return 'Unknown Team';
+                    };
+                    const p1Name = getTeamName(m.teamAId);
+                    const p2Name = getTeamName(m.teamBId);
+                    return {
+                      id: m.id,
+                      round: m.round,
+                      position: m.matchNumber,
+                      player1: p1Name,
+                      player2: p2Name,
+                      score1: m.scoreA,
+                      score2: m.scoreB,
+                      winner: m.winnerTeamId === m.teamAId ? p1Name : (m.winnerTeamId === m.teamBId ? p2Name : null)
+                    };
+                  })}
+                />
+              </div>
+            )}
+          </div>
+        </main>
       )}
 
       {/* Live Match Notification Toast */}
