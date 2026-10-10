@@ -299,16 +299,32 @@ export default function PlayerMonitorPage() {
 
   if (isTournament) {
     const tState = session.tournamentState!;
-    displayMatches = tState.matches.filter(tm => tm.status === 'IN_PROGRESS' || tm.status === 'COMPLETED').map(tm => {
+    displayMatches = tState.matches.filter(tm => 
+      (tm.status === 'IN_PROGRESS' || tm.status === 'COMPLETED') &&
+      tm.teamAId && tm.teamBId // Exclude BYEs which have a null team ID
+    ).map(tm => {
       const pairA = tState.pairs.find(p => p.id === tm.teamAId);
       const pairB = tState.pairs.find(p => p.id === tm.teamBId);
       
       const teamA = pairA ? [pairA.player1Id, pairA.player2Id] : [];
       const teamB = pairB ? [pairB.player1Id, pairB.player2Id] : [];
       
-      let courtLabel = tm.id.startsWith('pool_match_') 
-        ? `Pool Play`
-        : (tm.isLosersBracket ? `Losers R${tm.round}` : `Bracket R${tm.round}`);
+      // Calculate round name
+      let courtLabel = '';
+      if (tm.id.startsWith('pool_match_')) {
+        courtLabel = 'Pool Play';
+      } else {
+        const matchesInThisRound = tState.matches.filter(m => m.round === tm.round && m.isLosersBracket === tm.isLosersBracket && !m.id.startsWith('pool_match_'));
+        const matchCount = matchesInThisRound.length;
+        if (matchCount === 1) courtLabel = tm.isLosersBracket ? 'Losers Finals' : 'Championship';
+        else if (matchCount === 2) courtLabel = tm.isLosersBracket ? 'Losers Semifinals' : 'Semifinals';
+        else if (matchCount >= 3 && matchCount <= 4) courtLabel = tm.isLosersBracket ? 'Losers Quarterfinals' : 'Quarterfinals';
+        else courtLabel = tm.isLosersBracket ? `Losers R${tm.round}` : `Bracket R${tm.round}`;
+      }
+      
+      if (tm.isBestOf3) {
+        courtLabel += ' (BO3)';
+      }
         
       let winner = null;
       if (tm.winnerTeamId === tm.teamAId) winner = 'A';
@@ -323,6 +339,7 @@ export default function PlayerMonitorPage() {
         startedAtEpochMs: tm.startedAtEpochMs || 0,
         endedAtEpochMs: tm.endedAtEpochMs,
         winner,
+        status: tm.status,
         scoreA: tm.scoreA,
         scoreB: tm.scoreB,
         isBestOf3: tm.isBestOf3,
@@ -333,8 +350,8 @@ export default function PlayerMonitorPage() {
     });
   }
 
-  const completedMatches = displayMatches.filter(m => m.endedAtEpochMs != null);
-  const inProgressMatches = displayMatches.filter(m => m.endedAtEpochMs == null);
+  const completedMatches = displayMatches.filter(m => (m as any).status === 'COMPLETED' || ((m as any).status == null && m.endedAtEpochMs != null));
+  const inProgressMatches = displayMatches.filter(m => (m as any).status === 'IN_PROGRESS' || ((m as any).status == null && m.endedAtEpochMs == null));
   const sortedCompletedMatches = [...completedMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
   );
