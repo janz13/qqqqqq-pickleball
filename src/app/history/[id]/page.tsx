@@ -87,9 +87,37 @@ export default function HistoryPage() {
       }
 
       if (isPlayerView && myId) {
-        const sortedPlayers = getSortedPlayers(historyItem.players, historyItem.matches);
-        const top3 = sortedPlayers.slice(0, 3);
-        const myRankIndex = top3.findIndex(p => p.id === myId);
+        let myRankIndex = -1;
+        const isTournament = historyItem.session.sessionType && historyItem.session.sessionType.startsWith('TOURNAMENT_');
+        
+        if (isTournament && historyItem.session.tournamentState) {
+          const tState = historyItem.session.tournamentState;
+          const rankedPairs = [...tState.pairs].sort((a, b) => {
+            const aBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === a.id || m.teamBId === a.id));
+            const bBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === b.id || m.teamBId === b.id));
+            
+            const aMaxRound = Math.max(...aBracketMatches.map(m => m.round), 0);
+            const bMaxRound = Math.max(...bBracketMatches.map(m => m.round), 0);
+            
+            const aWonMax = aBracketMatches.some(m => m.round === aMaxRound && m.winnerTeamId === a.id);
+            const bWonMax = bBracketMatches.some(m => m.round === bMaxRound && m.winnerTeamId === b.id);
+            
+            const aBracketScore = aMaxRound * 10 + (aWonMax ? 5 : 0);
+            const bBracketScore = bMaxRound * 10 + (bWonMax ? 5 : 0);
+            
+            if (aBracketScore !== bBracketScore) return bBracketScore - aBracketScore;
+            if (b.poolPlayWins !== a.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
+            return b.poolPlayPointDiff - a.poolPlayPointDiff;
+          });
+          
+          const top3Pairs = rankedPairs.slice(0, 3);
+          myRankIndex = top3Pairs.findIndex(pair => pair.player1Id === myId || pair.player2Id === myId);
+        } else {
+          const sortedPlayers = getSortedPlayers(historyItem.players, historyItem.matches);
+          const top3 = sortedPlayers.slice(0, 3);
+          myRankIndex = top3.findIndex(p => p.id === myId);
+        }
+
         if (myRankIndex !== -1) {
           setTimeout(() => {
             setCongratsRank(myRankIndex + 1);
@@ -125,18 +153,128 @@ export default function HistoryPage() {
     );
   }
 
-  const sortedPlayers = getSortedPlayers(historyItem.players, historyItem.matches);
-  const totalMatches = historyItem.matches.length;
-  const top3 = sortedPlayers.slice(0, 3);
+  const isTournament = historyItem.session.sessionType && historyItem.session.sessionType.startsWith('TOURNAMENT_');
+  
+  let displayMatches = historyItem.matches;
+  let top3: { id: string, name: string, photoUrl?: string, isTeam?: boolean }[] = [];
+  let finalRankings: { id: string, name: string, wins: number, losses: number, winPct: number }[] = [];
+
+  if (isTournament && historyItem.session.tournamentState) {
+    const tState = historyItem.session.tournamentState;
+    
+    // 1. Map Tournament Matches
+    displayMatches = tState.matches.filter(tm => (tm.status === 'COMPLETED' || (tm.status as any) == null) && tm.teamAId && tm.teamBId).map(tm => {
+      const pairA = tState.pairs.find(p => p.id === tm.teamAId);
+      const pairB = tState.pairs.find(p => p.id === tm.teamBId);
+      
+      let courtLabel = '';
+      if (tm.id.startsWith('pool_match_')) courtLabel = 'Pool Play';
+      else {
+        const matchesInThisRound = tState.matches.filter(m => m.round === tm.round && m.isLosersBracket === tm.isLosersBracket && !m.id.startsWith('pool_match_'));
+        const matchCount = matchesInThisRound.length;
+        if (matchCount === 1) courtLabel = tm.isLosersBracket ? 'Losers Finals' : 'Championship';
+        else if (matchCount === 2) courtLabel = tm.isLosersBracket ? 'Losers Semifinals' : 'Semifinals';
+        else if (matchCount >= 3 && matchCount <= 4) courtLabel = tm.isLosersBracket ? 'Losers Quarterfinals' : 'Quarterfinals';
+        else courtLabel = tm.isLosersBracket ? `Losers R${tm.round}` : `Bracket R${tm.round}`;
+      }
+      if (tm.isBestOf3) courtLabel += ' (BO3)';
+        
+      let winner = null;
+      if (tm.winnerTeamId === tm.teamAId) winner = 'A';
+      else if (tm.winnerTeamId === tm.teamBId) winner = 'B';
+
+      return {
+        id: tm.id,
+        courtId: tm.courtId || '',
+        courtLabel,
+        teamA: pairA ? [pairA.player1Id, pairA.player2Id] : [],
+        teamB: pairB ? [pairB.player1Id, pairB.player2Id] : [],
+        startedAtEpochMs: tm.startedAtEpochMs || 0,
+        endedAtEpochMs: tm.endedAtEpochMs || 0,
+        winner,
+        status: tm.status,
+        scoreA: tm.scoreA,
+        scoreB: tm.scoreB,
+        isBestOf3: tm.isBestOf3,
+        games: tm.games,
+        teamAName: pairA?.name || null,
+        teamBName: pairB?.name || null,
+      } as any;
+    });
+
+    // 2. Rank pairs
+    const rankedPairs = [...tState.pairs].sort((a, b) => {
+      const aBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === a.id || m.teamBId === a.id));
+      const bBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === b.id || m.teamBId === b.id));
+      
+      const aMaxRound = Math.max(...aBracketMatches.map(m => m.round), 0);
+      const bMaxRound = Math.max(...bBracketMatches.map(m => m.round), 0);
+      
+      const aWonMax = aBracketMatches.some(m => m.round === aMaxRound && m.winnerTeamId === a.id);
+      const bWonMax = bBracketMatches.some(m => m.round === bMaxRound && m.winnerTeamId === b.id);
+      
+      const aBracketScore = aMaxRound * 10 + (aWonMax ? 5 : 0);
+      const bBracketScore = bMaxRound * 10 + (bWonMax ? 5 : 0);
+      
+      if (aBracketScore !== bBracketScore) return bBracketScore - aBracketScore;
+      if (b.poolPlayWins !== a.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
+      return b.poolPlayPointDiff - a.poolPlayPointDiff;
+    });
+
+    finalRankings = rankedPairs.map(pair => {
+      let name = pair.name;
+      if (!name) {
+        const p1 = historyItem.players.find(p => p.id === pair.player1Id);
+        const p2 = historyItem.players.find(p => p.id === pair.player2Id);
+        if (p1 && p2) name = `${p1.name} & ${p2.name}`;
+        else if (p1) name = p1.name;
+        else if (p2) name = p2.name;
+        else name = 'Team';
+      }
+      
+      // Calculate overall tournament wins/losses
+      let wins = 0;
+      let losses = 0;
+      tState.matches.forEach(m => {
+        if (m.winnerTeamId) {
+          if (m.teamAId === pair.id) {
+            if (m.winnerTeamId === pair.id) wins++; else losses++;
+          }
+          if (m.teamBId === pair.id) {
+            if (m.winnerTeamId === pair.id) wins++; else losses++;
+          }
+        }
+      });
+      const totalGames = wins + losses;
+      const winPct = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+      
+      return { id: pair.id, name, wins, losses, winPct };
+    });
+
+    top3 = finalRankings.slice(0, 3).map(r => ({ ...r, isTeam: true }));
+  } else {
+    const sortedPlayers = getSortedPlayers(historyItem.players, historyItem.matches);
+    finalRankings = sortedPlayers.map(p => {
+      const wins = p.sessionWins;
+      const losses = p.sessionLosses;
+      const totalGames = p.sessionGamesPlayed;
+      const winPct = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+      return { id: p.id, name: p.name, wins, losses, winPct, photoUrl: p.photoUrl };
+    });
+    
+    top3 = finalRankings.slice(0, 3).map(r => ({ ...r, isTeam: false }));
+  }
+
+  const totalMatches = displayMatches.length;
   
   // Calculate chronological match numbers
   const matchNumberMap = new Map<string, number>();
-  [...historyItem.matches]
+  [...displayMatches]
     .sort((a, b) => a.startedAtEpochMs - b.startedAtEpochMs)
     .forEach((m, idx) => matchNumberMap.set(m.id, idx + 1));
 
   // Sort matches from newest to oldest
-  const sortedMatches = [...historyItem.matches].sort(
+  const sortedMatches = [...displayMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? b.startedAtEpochMs) - (a.endedAtEpochMs ?? a.startedAtEpochMs)
   );
 
@@ -145,9 +283,34 @@ export default function HistoryPage() {
     : sortedMatches;
   
   // Calculate some fun stats
-  const totalGamesPlayed = historyItem.players.reduce((sum: number, p: Player) => sum + p.sessionGamesPlayed, 0);
-  const averageGamesPerPlayer = historyItem.players.length > 0 ? (totalGamesPlayed / historyItem.players.length).toFixed(1) : '0';
-  const mostActivePlayer = [...historyItem.players].sort((a, b) => b.sessionGamesPlayed - a.sessionGamesPlayed)[0];
+  let totalGamesPlayed = 0;
+  let averageGamesPerPlayer = '0';
+  let mostActivePlayer: Player | undefined;
+  let mostActiveGames = 0;
+
+  if (isTournament) {
+    const playerGameCounts = new Map<string, number>();
+    displayMatches.forEach(m => {
+      [...m.teamA, ...m.teamB].forEach(pId => {
+        playerGameCounts.set(pId, (playerGameCounts.get(pId) || 0) + 1);
+      });
+    });
+    totalGamesPlayed = Array.from(playerGameCounts.values()).reduce((sum, count) => sum + count, 0);
+    averageGamesPerPlayer = historyItem.players.length > 0 ? (totalGamesPlayed / historyItem.players.length).toFixed(1) : '0';
+    
+    let maxGames = -1;
+    let maxPlayerId = '';
+    playerGameCounts.forEach((count, pId) => {
+      if (count > maxGames) { maxGames = count; maxPlayerId = pId; }
+    });
+    mostActivePlayer = historyItem.players.find(p => p.id === maxPlayerId);
+    mostActiveGames = maxGames > 0 ? maxGames : 0;
+  } else {
+    totalGamesPlayed = historyItem.players.reduce((sum: number, p: Player) => sum + p.sessionGamesPlayed, 0);
+    averageGamesPerPlayer = historyItem.players.length > 0 ? (totalGamesPlayed / historyItem.players.length).toFixed(1) : '0';
+    mostActivePlayer = [...historyItem.players].sort((a, b) => b.sessionGamesPlayed - a.sessionGamesPlayed)[0];
+    mostActiveGames = mostActivePlayer?.sessionGamesPlayed || 0;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-4 md:p-8">
@@ -281,7 +444,7 @@ export default function HistoryPage() {
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   }`}
                 >
-                  My Games ({historyItem.matches.filter(m => m.teamA.includes(myPlayerId) || m.teamB.includes(myPlayerId)).length})
+                  My Games ({displayMatches.filter(m => m.teamA.includes(myPlayerId) || m.teamB.includes(myPlayerId)).length})
                 </button>
               </div>
             )}
@@ -442,7 +605,7 @@ export default function HistoryPage() {
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Most Active Player</div>
-              <div className="text-xl font-bold">{mostActivePlayer?.name || 'N/A'} <span className="text-sm font-normal text-gray-500">({mostActivePlayer?.sessionGamesPlayed || 0} games)</span></div>
+              <div className="text-xl font-bold">{mostActivePlayer?.name || 'N/A'} <span className="text-sm font-normal text-gray-500">({mostActiveGames} games)</span></div>
             </div>
           </div>
         </div>
@@ -462,18 +625,17 @@ export default function HistoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {sortedPlayers.map((player: Player, idx: number) => {
-                  const winPct = player.sessionGamesPlayed > 0 ? Math.round((player.sessionWins / player.sessionGamesPlayed) * 100) : 0;
+                {finalRankings.map((rankedItem, idx: number) => {
                   return (
-                    <tr key={player.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <tr key={rankedItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-gray-400">#{idx + 1}</td>
-                      <td className="px-6 py-4 font-bold">{player.name}</td>
+                      <td className="px-6 py-4 font-bold">{rankedItem.name}</td>
                       <td className="px-6 py-4 text-center font-medium">
-                        <span className="text-emerald-600 dark:text-emerald-400">{player.sessionWins}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">{rankedItem.wins}</span>
                         <span className="text-gray-400 mx-1">-</span>
-                        <span className="text-rose-600 dark:text-rose-400">{player.sessionLosses}</span>
+                        <span className="text-rose-600 dark:text-rose-400">{rankedItem.losses}</span>
                       </td>
-                      <td className="px-6 py-4 text-center font-bold">{winPct}%</td>
+                      <td className="px-6 py-4 text-center font-bold">{rankedItem.winPct}%</td>
                     </tr>
                   )
                 })}
