@@ -33,30 +33,39 @@ export function TournamentLeaderboard({ tournamentState, players }: { tournament
 
   const { pairs, matches, phase } = tournamentState;
 
-  // Rank teams based on tournament performance
-  const rankedPairs = [...pairs].sort((a, b) => {
-    // 1. Bracket progress
-    const aBracketMatches = matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === a.id || m.teamBId === a.id));
-    const bBracketMatches = matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === b.id || m.teamBId === b.id));
-    
-    const aMaxRound = Math.max(...aBracketMatches.map(m => m.round), 0);
-    const bMaxRound = Math.max(...bBracketMatches.map(m => m.round), 0);
-    
-    const aWonMax = aBracketMatches.some(m => m.round === aMaxRound && m.winnerTeamId === a.id);
-    const bWonMax = bBracketMatches.some(m => m.round === bMaxRound && m.winnerTeamId === b.id);
-    
-    // Assign a score: reaching a round gives points, winning that round gives a bonus
-    const aBracketScore = aMaxRound * 10 + (aWonMax ? 5 : 0);
-    const bBracketScore = bMaxRound * 10 + (bWonMax ? 5 : 0);
-    
-    if (aBracketScore !== bBracketScore) return bBracketScore - aBracketScore;
-    
-    // 2. Pool Play Wins
+  // Rank pairs based on tournament performance (with deduplication for Chaos Roulette)
+  const pairScores = pairs.map(pair => {
+    const pairBracketMatches = matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === pair.id || m.teamBId === pair.id));
+    const maxRound = Math.max(...pairBracketMatches.map(m => m.round), 0);
+    const wonMax = pairBracketMatches.some(m => m.round === maxRound && m.winnerTeamId === pair.id);
+    const bracketScore = maxRound * 10 + (wonMax ? 5 : 0);
+    const playerIds = [pair.player1Id, pair.player2Id].sort().join('_');
+    return { pair, playerIds, bracketScore, poolPlayWins: pair.poolPlayWins || 0, poolPlayPointDiff: pair.poolPlayPointDiff || 0 };
+  });
+
+  const dedupedScoresMap = new Map<string, typeof pairScores[0]>();
+  for (const item of pairScores) {
+    const existing = dedupedScoresMap.get(item.playerIds);
+    if (!existing) {
+      dedupedScoresMap.set(item.playerIds, item);
+    } else {
+      if (item.bracketScore > existing.bracketScore) {
+         dedupedScoresMap.set(item.playerIds, { ...item, poolPlayWins: existing.poolPlayWins + item.poolPlayWins, poolPlayPointDiff: existing.poolPlayPointDiff + item.poolPlayPointDiff });
+      } else {
+         existing.poolPlayWins += item.poolPlayWins;
+         existing.poolPlayPointDiff += item.poolPlayPointDiff;
+      }
+    }
+  }
+
+  const dedupedScores = Array.from(dedupedScoresMap.values());
+  dedupedScores.sort((a, b) => {
+    if (a.bracketScore !== b.bracketScore) return b.bracketScore - a.bracketScore;
     if (a.poolPlayWins !== b.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
-    
-    // 3. Pool Play Point Diff
     return b.poolPlayPointDiff - a.poolPlayPointDiff;
   });
+
+  const rankedPairs = dedupedScores.map(d => d.pair);
 
   const top3 = rankedPairs.slice(0, 3);
   const others = rankedPairs.slice(3);

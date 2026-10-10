@@ -202,28 +202,43 @@ export default function HistoryPage() {
       } as any;
     });
 
-    // 2. Rank pairs
-    const rankedPairs = [...tState.pairs].sort((a, b) => {
-      const aBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === a.id || m.teamBId === a.id));
-      const bBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === b.id || m.teamBId === b.id));
-      
-      const aMaxRound = Math.max(...aBracketMatches.map(m => m.round), 0);
-      const bMaxRound = Math.max(...bBracketMatches.map(m => m.round), 0);
-      
-      const aWonMax = aBracketMatches.some(m => m.round === aMaxRound && m.winnerTeamId === a.id);
-      const bWonMax = bBracketMatches.some(m => m.round === bMaxRound && m.winnerTeamId === b.id);
-      
-      const aBracketScore = aMaxRound * 10 + (aWonMax ? 5 : 0);
-      const bBracketScore = bMaxRound * 10 + (bWonMax ? 5 : 0);
-      
-      if (aBracketScore !== bBracketScore) return bBracketScore - aBracketScore;
-      if (b.poolPlayWins !== a.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
+    // 2. Rank pairs (Deduplicate for Chaos Roulette)
+    const pairScores = tState.pairs.map(pair => {
+      const pairBracketMatches = tState.matches.filter(m => !m.id.startsWith('pool') && (m.teamAId === pair.id || m.teamBId === pair.id));
+      const maxRound = Math.max(...pairBracketMatches.map(m => m.round), 0);
+      const wonMax = pairBracketMatches.some(m => m.round === maxRound && m.winnerTeamId === pair.id);
+      const bracketScore = maxRound * 10 + (wonMax ? 5 : 0);
+      const playerIds = [pair.player1Id, pair.player2Id].sort().join('_');
+      return { pair, playerIds, bracketScore, poolPlayWins: pair.poolPlayWins || 0, poolPlayPointDiff: pair.poolPlayPointDiff || 0 };
+    });
+
+    const dedupedScoresMap = new Map<string, typeof pairScores[0]>();
+    for (const item of pairScores) {
+      const existing = dedupedScoresMap.get(item.playerIds);
+      if (!existing) {
+        dedupedScoresMap.set(item.playerIds, item);
+      } else {
+        if (item.bracketScore > existing.bracketScore) {
+           dedupedScoresMap.set(item.playerIds, { ...item, poolPlayWins: existing.poolPlayWins + item.poolPlayWins, poolPlayPointDiff: existing.poolPlayPointDiff + item.poolPlayPointDiff });
+        } else {
+           existing.poolPlayWins += item.poolPlayWins;
+           existing.poolPlayPointDiff += item.poolPlayPointDiff;
+        }
+      }
+    }
+
+    const dedupedScores = Array.from(dedupedScoresMap.values());
+    dedupedScores.sort((a, b) => {
+      if (a.bracketScore !== b.bracketScore) return b.bracketScore - a.bracketScore;
+      if (a.poolPlayWins !== b.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
       return b.poolPlayPointDiff - a.poolPlayPointDiff;
     });
 
+    const rankedPairs = dedupedScores.map(d => d.pair);
+
     finalRankings = rankedPairs.map(pair => {
       let name = pair.name;
-      if (!name) {
+      if (!name || name.includes('Unknown')) {
         const p1 = historyItem.players.find(p => p.id === pair.player1Id);
         const p2 = historyItem.players.find(p => p.id === pair.player2Id);
         if (p1 && p2) name = `${p1.name} & ${p2.name}`;
@@ -232,16 +247,23 @@ export default function HistoryPage() {
         else name = 'Team';
       }
       
-      // Calculate overall tournament wins/losses
+      // Calculate overall tournament wins/losses using player IDs to catch all their chaos rounds
       let wins = 0;
       let losses = 0;
+      const targetIds = [pair.player1Id, pair.player2Id].sort().join('_');
+      
       tState.matches.forEach(m => {
         if (m.winnerTeamId) {
-          if (m.teamAId === pair.id) {
-            if (m.winnerTeamId === pair.id) wins++; else losses++;
+          const tA = tState.pairs.find(p => p.id === m.teamAId);
+          const tB = tState.pairs.find(p => p.id === m.teamBId);
+          const tAIds = tA ? [tA.player1Id, tA.player2Id].sort().join('_') : '';
+          const tBIds = tB ? [tB.player1Id, tB.player2Id].sort().join('_') : '';
+          
+          if (tAIds === targetIds) {
+            if (m.winnerTeamId === m.teamAId) wins++; else losses++;
           }
-          if (m.teamBId === pair.id) {
-            if (m.winnerTeamId === pair.id) wins++; else losses++;
+          if (tBIds === targetIds) {
+            if (m.winnerTeamId === m.teamBId) wins++; else losses++;
           }
         }
       });
