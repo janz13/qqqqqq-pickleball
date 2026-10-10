@@ -52,7 +52,38 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
   // Determine if the entire tournament is complete (finals has a winner)
   const finalsRound = roundNumbers[roundNumbers.length - 1];
   const finalsMatches = finalsRound ? rounds[finalsRound] : [];
-  const champion = finalsMatches.length === 1 && finalsMatches[0].winner ? finalsMatches[0].winner : null;
+  const finalMatch = finalsMatches.length === 1 ? finalsMatches[0] : null;
+  const champion = finalMatch && finalMatch.winner ? finalMatch.winner : null;
+
+  let secondPlace = null;
+  let thirdPlace = null;
+
+  if (champion && finalMatch) {
+    secondPlace = finalMatch.winner === finalMatch.player1 ? finalMatch.player2 : finalMatch.player1;
+    
+    // Determine 3rd place from semifinals if they exist
+    const semisRound = roundNumbers[roundNumbers.length - 2];
+    const semisMatches = semisRound ? rounds[semisRound] : [];
+    
+    if (semisMatches.length === 2) {
+      // Find the losers of the two semifinal matches
+      const semiLosers = semisMatches.map(m => {
+        if (!m.winner) return null;
+        return {
+          name: m.winner === m.player1 ? m.player2 : m.player1,
+          score: m.winner === m.player1 ? (m.score2 || 0) : (m.score1 || 0)
+        };
+      }).filter(Boolean);
+      
+      // Tiebreak by score in the semis
+      if (semiLosers.length === 2) {
+        semiLosers.sort((a, b) => b!.score - a!.score);
+        thirdPlace = semiLosers[0]!.name; // Best loser gets 3rd
+      } else if (semiLosers.length === 1) {
+        thirdPlace = semiLosers[0]!.name;
+      }
+    }
+  }
 
   if (matches.length === 0) {
     return (
@@ -64,23 +95,51 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Champion Banner */}
+      {/* Podium Display */}
       {champion && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 rounded-2xl p-6 text-center shadow-lg animate-champion-entrance">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMikiLz48L3N2Zz4=')] opacity-50" />
-          <div className="relative z-10">
-            <div className="text-5xl mb-2 animate-bounce-slow">🏆</div>
-            <h3 className="text-2xl font-black text-white drop-shadow-md tracking-tight">
-              CHAMPION
-            </h3>
-            <p className="text-xl font-bold text-white/90 mt-1">{champion}</p>
+        <div className="flex justify-center items-end h-64 gap-2 md:gap-4 mb-4 mt-8 animate-champion-entrance">
+          {/* 2nd Place */}
+          {secondPlace && (
+             <div className="flex flex-col items-center w-1/3 max-w-[200px]">
+               <div className="text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-slate-200">
+                 {secondPlace}
+               </div>
+               <div className="w-full h-32 bg-gradient-to-t from-slate-300 to-slate-200 rounded-t-xl flex justify-center pt-4 border-t-4 border-slate-400 shadow-lg relative">
+                 <span className="text-4xl font-black text-slate-400/50">2</span>
+                 <div className="absolute -top-6 text-3xl">🥈</div>
+               </div>
+             </div>
+          )}
+
+          {/* 1st Place */}
+          <div className="flex flex-col items-center w-1/3 max-w-[220px] z-10 relative">
+            <div className="text-xl mb-1 animate-bounce-slow">🏆</div>
+            <div className="text-sm md:text-base font-bold text-amber-900 bg-gradient-to-r from-yellow-200 to-yellow-100 px-4 py-1.5 rounded-full shadow-md mb-2 text-center border border-yellow-300 truncate w-full">
+              {champion}
+            </div>
+            <div className="w-full h-44 bg-gradient-to-t from-yellow-500 to-yellow-400 rounded-t-xl flex justify-center pt-4 border-t-4 border-yellow-300 shadow-xl relative overflow-hidden">
+              <span className="text-6xl font-black text-yellow-600/30">1</span>
+              {/* Confetti-like sparkle dots */}
+              <div className="absolute top-2 left-6 w-2 h-2 bg-white rounded-full animate-sparkle-1" />
+              <div className="absolute top-4 right-10 w-1.5 h-1.5 bg-white rounded-full animate-sparkle-2" />
+              <div className="absolute bottom-3 left-16 w-1 h-1 bg-white rounded-full animate-sparkle-3" />
+              <div className="absolute bottom-5 right-20 w-2 h-2 bg-yellow-200 rounded-full animate-sparkle-1" />
+              <div className="absolute top-6 left-1/3 w-1.5 h-1.5 bg-yellow-100 rounded-full animate-sparkle-2" />
+            </div>
           </div>
-          {/* Confetti-like sparkle dots */}
-          <div className="absolute top-2 left-6 w-2 h-2 bg-white rounded-full animate-sparkle-1" />
-          <div className="absolute top-4 right-10 w-1.5 h-1.5 bg-white rounded-full animate-sparkle-2" />
-          <div className="absolute bottom-3 left-16 w-1 h-1 bg-white rounded-full animate-sparkle-3" />
-          <div className="absolute bottom-5 right-20 w-2 h-2 bg-yellow-200 rounded-full animate-sparkle-1" />
-          <div className="absolute top-6 left-1/3 w-1.5 h-1.5 bg-yellow-100 rounded-full animate-sparkle-2" />
+
+          {/* 3rd Place */}
+          {thirdPlace && (
+             <div className="flex flex-col items-center w-1/3 max-w-[200px]">
+               <div className="text-sm font-bold text-orange-900 bg-orange-50 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-orange-200">
+                 {thirdPlace}
+               </div>
+               <div className="w-full h-24 bg-gradient-to-t from-orange-300 to-orange-200 rounded-t-xl flex justify-center pt-4 border-t-4 border-orange-400 shadow-lg relative">
+                 <span className="text-4xl font-black text-orange-500/30">3</span>
+                 <div className="absolute -top-6 text-3xl">🥉</div>
+               </div>
+             </div>
+          )}
         </div>
       )}
 
@@ -91,7 +150,7 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
           minScale={0.2}
           maxScale={3}
           centerOnInit={true}
-          wheel={{ step: 0.1 }}
+          wheel={{ step: 0.05 }}
           pinch={{ step: 5 }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (
