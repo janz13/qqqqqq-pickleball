@@ -6,6 +6,7 @@ import { CourtStatus, PlayerStatus, Team } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
 import { BracketTree } from '@/components/ui/BracketTree';
+import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
 import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches } from '@/engine/queue-engine';
@@ -733,7 +734,9 @@ export default function PlayerMonitorPage() {
               Session Leaderboard
             </h2>
             
-            {players.filter(p => p.sessionGamesPlayed > 0).length === 0 ? (
+            {session?.sessionType === 'TOURNAMENT_DOUBLES' || session?.sessionType === 'TOURNAMENT_SINGLE_ELIM' ? (
+              <TournamentLeaderboard tournamentState={session.tournamentState!} players={players} />
+            ) : players.filter(p => p.sessionGamesPlayed > 0).length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-500">
                 <Trophy size={48} className="mb-4 opacity-20" />
                 <p className="font-medium">No matches completed yet</p>
