@@ -294,14 +294,53 @@ export default function PlayerMonitorPage() {
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
 
   // Calculate matches for Games tab (loose check != null so undefined never breaks)
-  const completedMatches = matches.filter(m => m.endedAtEpochMs != null);
-  const inProgressMatches = matches.filter(m => m.endedAtEpochMs == null);
+  let displayMatches = [...matches];
+  const isTournament = session?.sessionType && session.sessionType !== 'OPEN_PLAY' && session.tournamentState;
+
+  if (isTournament) {
+    const tState = session.tournamentState!;
+    displayMatches = tState.matches.filter(tm => tm.status === 'IN_PROGRESS' || tm.status === 'COMPLETED').map(tm => {
+      const pairA = tState.pairs.find(p => p.id === tm.teamAId);
+      const pairB = tState.pairs.find(p => p.id === tm.teamBId);
+      
+      const teamA = pairA ? [pairA.player1Id, pairA.player2Id] : [];
+      const teamB = pairB ? [pairB.player1Id, pairB.player2Id] : [];
+      
+      let courtLabel = tm.id.startsWith('pool_match_') 
+        ? `Pool Play`
+        : (tm.isLosersBracket ? `Losers R${tm.round}` : `Bracket R${tm.round}`);
+        
+      let winner = null;
+      if (tm.winnerTeamId === tm.teamAId) winner = 'A';
+      else if (tm.winnerTeamId === tm.teamBId) winner = 'B';
+      
+      return {
+        id: tm.id,
+        courtId: tm.courtId || '',
+        courtLabel,
+        teamA,
+        teamB,
+        startedAtEpochMs: tm.startedAtEpochMs || 0,
+        endedAtEpochMs: tm.endedAtEpochMs,
+        winner,
+        scoreA: tm.scoreA,
+        scoreB: tm.scoreB,
+        isBestOf3: tm.isBestOf3,
+        games: tm.games,
+        teamAName: pairA?.name || null,
+        teamBName: pairB?.name || null,
+      } as any;
+    });
+  }
+
+  const completedMatches = displayMatches.filter(m => m.endedAtEpochMs != null);
+  const inProgressMatches = displayMatches.filter(m => m.endedAtEpochMs == null);
   const sortedCompletedMatches = [...completedMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
   );
 
   const matchNumberMap = new Map<string, number>();
-  [...matches]
+  [...displayMatches]
     .sort((a, b) => a.startedAtEpochMs - b.startedAtEpochMs)
     .forEach((m, idx) => matchNumberMap.set(m.id, idx + 1));
 
@@ -548,6 +587,15 @@ export default function PlayerMonitorPage() {
                             {teamBPlayers.map(p => p?.name).join(' & ')}
                           </div>
                         </div>
+                        {(m as any).games && (m as any).games.length > 0 && (
+                          <div className="mt-3 flex items-center justify-center gap-2 text-xs font-mono">
+                            {(m as any).games.map((g: any, i: number) => (
+                              <span key={i} className="bg-slate-900/50 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                                G{i+1}: {g.scoreA}-{g.scoreB}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -589,6 +637,15 @@ export default function PlayerMonitorPage() {
                             {teamBPlayers.map(p => p?.name).join(' & ')}
                           </div>
                         </div>
+                        {(m as any).games && (m as any).games.length > 0 && (
+                          <div className="mt-3 flex items-center justify-center gap-2 text-xs font-mono">
+                            {(m as any).games.map((g: any, i: number) => (
+                              <span key={i} className="bg-slate-900/50 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                                G{i+1}: {g.scoreA}-{g.scoreB}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -645,6 +702,15 @@ export default function PlayerMonitorPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-3 text-slate-400">
+                          {(match as any).games && (match as any).games.length > 0 && (
+                            <div className="flex items-center gap-1.5 mr-2 font-mono">
+                              {(match as any).games.map((g: any, i: number) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-slate-900/50 rounded border border-slate-700">
+                                  {g.scoreA}-{g.scoreB}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <span className="flex items-center gap-1">
                             <Clock size={12} /> {duration}
                           </span>
@@ -658,12 +724,19 @@ export default function PlayerMonitorPage() {
                           isWinnerA ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
                         }`}>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team 1</span>
-                            {isWinnerA && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
-                                <Trophy size={10} /> Winner
-                              </span>
-                            )}
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {(match as any).teamAName || 'Team 1'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {match.scoreA != null && (
+                                <span className="font-mono text-lg font-black text-slate-200">{match.scoreA}</span>
+                              )}
+                              {isWinnerA && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                  <Trophy size={10} /> Winner
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="space-y-1.5">
                             {teamAPlayers.map((p, idx) => (
@@ -690,12 +763,19 @@ export default function PlayerMonitorPage() {
                           isWinnerB ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
                         }`}>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team 2</span>
-                            {isWinnerB && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
-                                <Trophy size={10} /> Winner
-                              </span>
-                            )}
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {(match as any).teamBName || 'Team 2'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {match.scoreB != null && (
+                                <span className="font-mono text-lg font-black text-slate-200">{match.scoreB}</span>
+                              )}
+                              {isWinnerB && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                  <Trophy size={10} /> Winner
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="space-y-1.5">
                             {teamBPlayers.map((p, idx) => (

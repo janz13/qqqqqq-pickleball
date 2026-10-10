@@ -150,7 +150,7 @@ export function BracketTree({ matches, pairs, onMatchClick }: BracketTreeProps) 
           maxScale={3}
           centerOnInit={true}
           smooth={false}
-          wheel={{ step: 0.1 }}
+          wheel={{ step: 0.02 }}
           pinch={{ step: 2 }}
         >
           {({ zoomIn, zoomOut, resetTransform }) => (

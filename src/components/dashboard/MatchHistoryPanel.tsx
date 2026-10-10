@@ -164,6 +164,18 @@ export default function MatchHistoryPanel() {
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-slide-up">
+      {session?.sessionType && session.sessionType !== 'OPEN_PLAY' && (
+        <div className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-xl p-4 flex items-start gap-3">
+          <Trophy className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={20} />
+          <div>
+            <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Tournament Session</h3>
+            <p className="text-sm text-indigo-700 dark:text-indigo-400 mt-1">
+              Tournament matches are managed in the <strong>Courts & Queue</strong> tab. You cannot reverse tournament bracket matches from this screen.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header & Summary Statistics */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
