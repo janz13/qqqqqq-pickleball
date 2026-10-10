@@ -342,42 +342,44 @@ export default function PlayerMonitorPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 mb-6">
-        <div className="flex bg-slate-800 p-1 rounded-2xl">
-          <button 
-            onClick={() => setActiveTab('queue')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-          >
-            <Users size={18} /> Queue
-          </button>
-          <button 
-            onClick={() => setActiveTab('games')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-          >
-            <Swords size={18} /> Games ({completedMatches.length})
-            {inProgressMatches.length > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-extrabold rounded-full bg-emerald-500 text-white animate-pulse">
-                {inProgressMatches.length} Live
-              </span>
-            )}
-          </button>
-          <button 
-            onClick={() => setActiveTab('leaderboards')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-          >
-            <Trophy size={18} /> Leaderboards
-          </button>
+        <div className="flex bg-slate-800 p-1 rounded-2xl overflow-x-auto hide-scrollbar">
+          {(!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
+            <button 
+              onClick={() => setActiveTab('queue')}
+              className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            >
+              <Users size={18} /> Queue
+            </button>
+          )}
+          
           {session.sessionType && session.sessionType !== 'OPEN_PLAY' && (
             <button 
               onClick={() => setActiveTab('tournament')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'tournament' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+              className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${(activeTab === 'tournament' || activeTab === 'queue') ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
             >
-              <GitMerge size={18} /> Tournament
+              <GitMerge size={18} /> Bracket
+            </button>
+          )}
+
+          <button 
+            onClick={() => setActiveTab('games')}
+            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+          >
+            <Swords size={18} /> Matches
+          </button>
+          
+          {(!session.sessionType || session.sessionType !== 'TOURNAMENT_SINGLE_ELIM') && (
+            <button 
+              onClick={() => setActiveTab('leaderboards')}
+              className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            >
+              <Trophy size={18} /> Standings
             </button>
           )}
         </div>
       </div>
 
-      {activeTab === 'queue' && (
+      {activeTab === 'queue' && (!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
         <main className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center gap-3 mb-4">
@@ -806,7 +808,7 @@ export default function PlayerMonitorPage() {
       )}
 
       {/* TOURNAMENT TAB */}
-      {activeTab === 'tournament' && session.tournamentState && (
+      {(activeTab === 'tournament' || (activeTab === 'queue' && session.sessionType && session.sessionType !== 'OPEN_PLAY')) && session.tournamentState && (
         <main className="max-w-7xl mx-auto px-4">
           <div className="space-y-6">
             <h2 className="text-3xl font-black tracking-tight mb-2">Tournament Bracket</h2>
@@ -824,7 +826,7 @@ export default function PlayerMonitorPage() {
             )}
 
             {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (
-              <div className="overflow-x-auto pb-4">
+              <div className="pb-4 h-full min-h-[600px]">
                 <BracketTree 
                   matches={session.tournamentState.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
                     const getTeamName = (teamId: string | null) => {
