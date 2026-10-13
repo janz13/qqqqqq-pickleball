@@ -1,60 +1,308 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
-import { SessionType } from '@/types/models';
+import { SessionType, TournamentPair, Player } from '@/types/models';
+import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield } from 'lucide-react';
+import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound } from '@/engine/tournament-engine';
 
 export default function TournamentPanel() {
   const { session, players } = useStore();
   const state = session?.tournamentState;
   const [scoringMatchId, setScoringMatchId] = useState<string | null>(null);
-  const [scoreA, setScoreA] = useState(0);
-  const [scoreB, setScoreB] = useState(0);
+  const [scoreA, setScoreA] = useState(11);
+  const [scoreB, setScoreB] = useState(9);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isEditingPairs, setIsEditingPairs] = useState(false);
 
-  // ─── No tournament state yet → Setup screen ───
-  if (!state) {
+  // Pair Builder State
+  const [draftPairs, setDraftPairs] = useState<TournamentPair[]>([]);
+  const [selectedP1, setSelectedP1] = useState<string>('');
+  const [selectedP2, setSelectedP2] = useState<string>('');
+
+  const checkedInPlayers = players.filter(p => p.status !== 'CHECKED_OUT');
+
+  // Initialize draft pairs from locked partners or existing pairs
+  useEffect(() => {
+    if (state?.pairs && state.pairs.length > 0) {
+      setDraftPairs(state.pairs);
+      return;
+    }
+
+    // Auto-form pairs using locked partners if any
+    const paired = new Set<string>();
+    const initialPairs: TournamentPair[] = [];
+
+    checkedInPlayers.forEach(p => {
+      if (paired.has(p.id)) return;
+      if (p.lockedPartnerId && !paired.has(p.lockedPartnerId)) {
+        const partner = checkedInPlayers.find(x => x.id === p.lockedPartnerId);
+        if (partner) {
+          initialPairs.push({
+            id: `pair_${initialPairs.length + 1}`,
+            player1Id: p.id,
+            player2Id: partner.id,
+            name: `${p.name} & ${partner.name}`,
+            seed: initialPairs.length + 1,
+            poolPlayWins: 0,
+            poolPlayPointDiff: 0,
+            poolPlayPointsScored: 0
+          });
+          paired.add(p.id);
+          paired.add(partner.id);
+        }
+      }
+    });
+
+    setDraftPairs(initialPairs);
+  }, [checkedInPlayers.length, state?.pairs]);
+
+  // Unassigned players in Pair Builder
+  const assignedPlayerIds = new Set<string>();
+  draftPairs.forEach(p => {
+    assignedPlayerIds.add(p.player1Id);
+    assignedPlayerIds.add(p.player2Id);
+  });
+  const unassignedPlayers = checkedInPlayers.filter(p => !assignedPlayerIds.has(p.id));
+
+  // ─── Pair Builder Actions ───
+  const handleRandomizeAllPairs = () => {
+    const shuffled = [...checkedInPlayers].sort(() => Math.random() - 0.5);
+    const newPairs: TournamentPair[] = [];
+    for (let i = 0; i < shuffled.length; i += 2) {
+      if (i + 1 < shuffled.length) {
+        newPairs.push({
+          id: `pair_${newPairs.length + 1}`,
+          player1Id: shuffled[i].id,
+          player2Id: shuffled[i + 1].id,
+          name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
+          seed: newPairs.length + 1,
+          poolPlayWins: 0,
+          poolPlayPointDiff: 0,
+          poolPlayPointsScored: 0
+        });
+      }
+    }
+    setDraftPairs(newPairs);
+  };
+
+  const handlePairRemaining = () => {
+    const shuffled = [...unassignedPlayers].sort(() => Math.random() - 0.5);
+    const newPairs = [...draftPairs];
+    for (let i = 0; i < shuffled.length; i += 2) {
+      if (i + 1 < shuffled.length) {
+        newPairs.push({
+          id: `pair_${newPairs.length + 1}`,
+          player1Id: shuffled[i].id,
+          player2Id: shuffled[i + 1].id,
+          name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
+          seed: newPairs.length + 1,
+          poolPlayWins: 0,
+          poolPlayPointDiff: 0,
+          poolPlayPointsScored: 0
+        });
+      }
+    }
+    setDraftPairs(newPairs);
+  };
+
+  const handleAddManualPair = () => {
+    if (!selectedP1 || !selectedP2 || selectedP1 === selectedP2) return;
+    const p1 = checkedInPlayers.find(p => p.id === selectedP1);
+    const p2 = checkedInPlayers.find(p => p.id === selectedP2);
+    if (!p1 || !p2) return;
+
+    const newPair: TournamentPair = {
+      id: `pair_${draftPairs.length + 1}`,
+      player1Id: p1.id,
+      player2Id: p2.id,
+      name: `${p1.name} & ${p2.name}`,
+      seed: draftPairs.length + 1,
+      poolPlayWins: 0,
+      poolPlayPointDiff: 0,
+      poolPlayPointsScored: 0
+    };
+
+    setDraftPairs([...draftPairs, newPair]);
+    setSelectedP1('');
+    setSelectedP2('');
+  };
+
+  const handleRemovePair = (pairId: string) => {
+    setDraftPairs(draftPairs.filter(p => p.id !== pairId));
+  };
+
+  const handleStartWithCustomPairs = () => {
+    if (draftPairs.length < 2) return;
+    useStore.getState().startTournament('CUSTOM', draftPairs);
+    setIsEditingPairs(false);
+  };
+
+  // ─── No tournament state or in custom pair builder mode ───
+  if (!state || isEditingPairs) {
     const canStart = session?.sessionType && session.sessionType !== 'OPEN_PLAY';
-    
+    const isDoubles = session?.sessionType === SessionType.TOURNAMENT_DOUBLES;
+
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-gray-500 gap-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">Tournament Setup</h2>
-          <p>Make sure all players have been added and checked in through the Roster tab before starting.</p>
-          <p className="text-sm text-gray-400 mt-2">
-            {players.length} player{players.length !== 1 ? 's' : ''} registered 
-            ({players.filter(p => p.status !== 'CHECKED_OUT').length} checked in)
-          </p>
+      <div className="flex flex-col gap-6 p-6 max-w-4xl mx-auto w-full animate-fade-in text-gray-900 dark:text-gray-100">
+        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+          <div>
+            <h2 className="text-3xl font-black tracking-tight flex items-center gap-2">
+              <Trophy className="text-amber-500" />
+              {isDoubles ? 'The Grand Slam: Team Setup' : 'Tournament Team Setup'}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Choose who pairs with whom. You can manually pair players, randomize all, or auto-fill.
+            </p>
+          </div>
+          {isEditingPairs && (
+            <button
+              onClick={() => setIsEditingPairs(false)}
+              className="px-4 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 font-bold"
+            >
+              Cancel Edit
+            </button>
+          )}
         </div>
-        
-        {canStart ? (
-          <>
-            <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-              <button 
-                onClick={() => useStore.getState().startTournament('RANDOM')}
-                disabled={players.filter(p => p.status !== 'CHECKED_OUT').length < 4}
-                className="flex-1 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm flex flex-col items-center justify-center gap-1"
-              >
-                <span>🎲 Random Pairs</span>
-                <span className="text-xs font-normal opacity-80">Shuffle all players</span>
-              </button>
-              <button 
-                onClick={() => useStore.getState().startTournament('LOCKED')}
-                disabled={players.filter(p => p.status !== 'CHECKED_OUT').length < 4}
-                className="flex-1 px-6 py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white rounded-xl font-bold transition-colors shadow-sm flex flex-col items-center justify-center gap-1"
-              >
-                <span>🔗 Custom Pairs</span>
-                <span className="text-xs font-normal opacity-80">Use Duo Queue locks</span>
-              </button>
+
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleRandomizeAllPairs}
+            disabled={checkedInPlayers.length < 2}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-all"
+          >
+            <Shuffle size={16} /> Randomize All Pairs
+          </button>
+          {unassignedPlayers.length > 1 && (
+            <button
+              onClick={handlePairRemaining}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-all"
+            >
+              <Users size={16} /> Auto-Pair Remaining ({unassignedPlayers.length})
+            </button>
+          )}
+          {draftPairs.length > 0 && (
+            <button
+              onClick={() => setDraftPairs([])}
+              className="px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-sm flex items-center gap-2 transition-all ml-auto"
+            >
+              <Trash2 size={16} /> Clear All
+            </button>
+          )}
+        </div>
+
+        {/* Manual Pair Form */}
+        <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-2">
+            <Plus size={16} className="text-indigo-500" /> Manually Form a Pair
+          </h3>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <select
+              value={selectedP1}
+              onChange={e => setSelectedP1(e.target.value)}
+              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select Player 1...</option>
+              {unassignedPlayers.map(p => (
+                <option key={p.id} value={p.id}>{p.name} (Lvl {p.skillLevel})</option>
+              ))}
+            </select>
+            <span className="font-black text-gray-400">&</span>
+            <select
+              value={selectedP2}
+              onChange={e => setSelectedP2(e.target.value)}
+              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select Player 2...</option>
+              {unassignedPlayers.filter(p => p.id !== selectedP1).map(p => (
+                <option key={p.id} value={p.id}>{p.name} (Lvl {p.skillLevel})</option>
+              ))}
+            </select>
+            <button
+              onClick={handleAddManualPair}
+              disabled={!selectedP1 || !selectedP2}
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={16} /> Pair Up
+            </button>
+          </div>
+        </div>
+
+        {/* Unassigned Players Chip List */}
+        {unassignedPlayers.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200 dark:border-amber-900/40">
+            <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs uppercase tracking-wider mb-2">
+              <AlertCircle size={16} /> Unpaired Players ({unassignedPlayers.length})
             </div>
-            {players.filter(p => p.status !== 'CHECKED_OUT').length < 4 && (
-              <p className="text-sm text-red-500 font-medium mt-2">Need at least 4 checked-in players</p>
-            )}
-          </>
-        ) : (
-          <p className="text-red-500 font-medium">This session is set to Open Play, not a tournament mode.</p>
+            <div className="flex flex-wrap gap-2">
+              {unassignedPlayers.map(p => (
+                <span key={p.id} className="px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-800/40 text-xs font-bold text-gray-800 dark:text-gray-200">
+                  {p.name}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
+
+        {/* Formed Pairs Grid */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-black uppercase tracking-wider text-gray-700 dark:text-gray-300">
+              Formed Teams ({draftPairs.length})
+            </h3>
+            <span className="text-xs text-gray-500">
+              {draftPairs.length * 2} of {checkedInPlayers.length} players paired
+            </span>
+          </div>
+
+          {draftPairs.length === 0 ? (
+            <div className="p-12 text-center bg-white dark:bg-gray-900 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 text-gray-400">
+              <Users size={36} className="mx-auto mb-2 opacity-30" />
+              <p className="font-bold">No teams formed yet.</p>
+              <p className="text-xs mt-1">Click "Randomize All Pairs" or manually pair players above.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {draftPairs.map((pair, idx) => {
+                const p1 = checkedInPlayers.find(p => p.id === pair.player1Id);
+                const p2 = checkedInPlayers.find(p => p.id === pair.player2Id);
+                return (
+                  <div key={pair.id} className="p-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                        Team #{idx + 1}
+                      </div>
+                      <div className="font-extrabold text-sm text-gray-900 dark:text-gray-100 mt-0.5">
+                        {p1?.name || 'Player'} & {p2?.name || 'Player'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemovePair(pair.id)}
+                      className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                      title="Unpair"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Start Button */}
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+          <button
+            onClick={handleStartWithCustomPairs}
+            disabled={draftPairs.length < 2}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-black text-lg shadow-xl shadow-emerald-600/20 transition-all flex items-center justify-center gap-3"
+          >
+            <span>{isDoubles ? 'Start Pool Play with these Teams' : 'Generate Tournament with these Teams'}</span>
+            <ArrowRight size={20} />
+          </button>
+        </div>
       </div>
     );
   }
@@ -76,100 +324,79 @@ export default function TournamentPanel() {
   // ─── Actions ───
   const handleStartPoolPlay = () => {
     if (session && state) {
-      import('@/engine/tournament-engine').then(({ buildPoolPlayRound }) => {
-        const newPoolMatches = buildPoolPlayRound(state, 4);
-        useStore.getState().updateSession(session.id, {
-          tournamentState: {
-            ...state,
-            matches: [...state.matches, ...newPoolMatches],
-            phase: 'POOL_PLAY'
-          }
-        });
+      const newPoolMatches = buildPoolPlayRound(state, 4);
+      useStore.getState().updateSession(session.id, {
+        tournamentState: {
+          ...state,
+          matches: [...state.matches, ...newPoolMatches],
+          phase: 'POOL_PLAY'
+        }
       });
     }
   };
 
   const handleGenerateBracket = () => {
     if (session && state) {
-      import('@/engine/tournament-engine').then(({ generateBracket }) => {
-        const newState = generateBracket(state, session.sessionType!);
-        useStore.getState().updateSession(session.id, {
-          tournamentState: newState
-        });
-      });
-    }
-  };
-
-  const handleAdvanceBracketMatch = (matchId: string, winnerTeamId: string) => {
-    if (session && state) {
-      import('@/engine/tournament-engine').then(({ advanceMatchWinner }) => {
-        const newState = advanceMatchWinner(state, matchId, winnerTeamId);
-
-        // Check if tournament is done (all bracket matches completed)
-        const bracketMatches = newState.matches.filter(m => !m.id.startsWith('pool_match_'));
-        const allCompleted = bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
-        
-        useStore.getState().updateSession(session.id, {
-          tournamentState: {
-            ...newState,
-            phase: allCompleted ? 'COMPLETED' : newState.phase
-          }
-        });
-      });
-    }
-  };
-
-  const handleScorePoolMatch = (matchId: string) => {
-    if (session && state) {
-      const match = state.matches.find(m => m.id === matchId);
-      if (!match) return;
-
-      const winnerTeamId = scoreA > scoreB ? match.teamAId : match.teamBId;
-      const loserTeamId = scoreA > scoreB ? match.teamBId : match.teamAId;
-      
-      // Update the match
-      const updatedMatches = state.matches.map(m => {
-        if (m.id === matchId) {
-          return { ...m, scoreA, scoreB, winnerTeamId, status: 'COMPLETED' as const, endedAtEpochMs: Date.now() };
-        }
-        return m;
-      });
-
-      // Update pair stats
-      const updatedPairs = state.pairs.map(p => {
-        if (p.id === winnerTeamId) {
-          return { ...p, poolPlayWins: p.poolPlayWins + 1, poolPlayPointsScored: p.poolPlayPointsScored + Math.max(scoreA, scoreB), poolPlayPointDiff: p.poolPlayPointDiff + Math.abs(scoreA - scoreB) };
-        }
-        if (p.id === loserTeamId) {
-          return { ...p, poolPlayPointsScored: p.poolPlayPointsScored + Math.min(scoreA, scoreB), poolPlayPointDiff: p.poolPlayPointDiff - Math.abs(scoreA - scoreB) };
-        }
-        return p;
-      });
-
+      const newState = generateBracket(state, session.sessionType!);
       useStore.getState().updateSession(session.id, {
-        tournamentState: { ...state, matches: updatedMatches, pairs: updatedPairs }
+        tournamentState: newState
       });
-
-      setScoringMatchId(null);
-      setScoreA(0);
-      setScoreB(0);
     }
+  };
+
+  const handleAdvanceBracketMatch = (matchId: string, winnerTeamId: string, customScoreA?: number, customScoreB?: number) => {
+    if (session && state) {
+      const newState = advanceMatchWinner(state, matchId, winnerTeamId, customScoreA, customScoreB);
+
+      // Check if tournament is done
+      const bracketMatches = newState.matches.filter(m => !m.id.startsWith('pool_match_'));
+      const allCompleted = bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
+      
+      useStore.getState().updateSession(session.id, {
+        tournamentState: {
+          ...newState,
+          phase: allCompleted ? 'COMPLETED' : newState.phase
+        }
+      });
+    }
+  };
+
+  const handleSavePoolScore = (matchId: string) => {
+    if (session && state) {
+      const newState = updatePoolMatchScore(state, matchId, scoreA, scoreB);
+      useStore.getState().updateSession(session.id, {
+        tournamentState: newState
+      });
+      setScoringMatchId(null);
+    }
+  };
+
+  const handleSwapPoolScores = () => {
+    const s1 = scoreA;
+    const s2 = scoreB;
+    setScoreA(s2);
+    setScoreB(s1);
+  };
+
+  const handleOpenPoolScoring = (match: any) => {
+    setScoringMatchId(match.id);
+    setScoreA(match.scoreA ?? 11);
+    setScoreB(match.scoreB ?? 9);
   };
 
   const handleResetTournament = () => {
     if (session) {
       useStore.getState().updateSession(session.id, { tournamentState: undefined });
       setShowResetConfirm(false);
+      setIsEditingPairs(false);
     }
   };
 
   const handleAdvanceChaosRound = () => {
     if (session && state) {
-      import('@/engine/tournament-engine').then(({ advanceChaosRound }) => {
-        const newState = advanceChaosRound(state, players);
-        useStore.getState().updateSession(session.id, {
-          tournamentState: newState
-        });
+      const newState = advanceChaosRound(state, players);
+      useStore.getState().updateSession(session.id, {
+        tournamentState: newState
       });
     }
   };
@@ -194,7 +421,9 @@ export default function TournamentPanel() {
         player2Id: m.teamBId,
         score1: m.scoreA,
         score2: m.scoreB,
-        winner: winnerName
+        winner: winnerName,
+        isLosersBracket: m.isLosersBracket,
+        isGrandFinals: m.id.startsWith('gf_')
       };
     });
 
@@ -216,25 +445,35 @@ export default function TournamentPanel() {
     : '🌪️ Chaos Roulette';
 
   return (
-    <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto">
+    <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto text-gray-900 dark:text-gray-100 max-w-7xl mx-auto w-full">
       {/* ─── Header ─── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
         <div>
-          <h2 className="text-2xl font-bold">{modeLabel}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{pairs.length} teams • {matches.length} total matches</p>
+          <h2 className="text-3xl font-black tracking-tight">{modeLabel}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+            {pairs.length} teams • {matches.length} total matches
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
-            phase === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
-            phase === 'BRACKET' ? 'bg-amber-100 text-amber-800' :
-            phase === 'POOL_PLAY' ? 'bg-blue-100 text-blue-800' :
-            'bg-gray-100 text-gray-800'
+          {completedPoolMatches.length === 0 && phase === 'POOL_PLAY' && (
+            <button
+              onClick={() => setIsEditingPairs(true)}
+              className="px-3 py-1.5 text-xs font-bold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <Users size={14} /> Edit Pairs
+            </button>
+          )}
+          <div className={`px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+            phase === 'COMPLETED' ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' :
+            phase === 'BRACKET' ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800' :
+            phase === 'POOL_PLAY' ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800' :
+            'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
           }`}>
             {phase === 'COMPLETED' ? '✅ Completed' : phase === 'BRACKET' ? '🏟️ Bracket' : phase === 'POOL_PLAY' ? '🏊 Pool Play' : '📋 Registration'}
           </div>
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
+            className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 transition-colors"
           >
             Reset Tournament
           </button>
@@ -243,49 +482,44 @@ export default function TournamentPanel() {
 
       {/* ─── Reset Confirmation ─── */}
       {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-xl border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-bold text-red-600 mb-2">Reset Tournament?</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">This will erase all tournament progress including brackets, pool play results, and pairs. This cannot be undone.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowResetConfirm(false)} className="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleResetTournament} className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors">Reset</button>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-200 dark:border-gray-800 space-y-4">
+            <h3 className="text-lg font-black text-rose-600">Reset Tournament?</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              This will erase all tournament progress including brackets, pool play results, and pairs. This cannot be undone.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowResetConfirm(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 text-sm">
+                Cancel
+              </button>
+              <button onClick={handleResetTournament} className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md">
+                Reset
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── REGISTRATION Phase ─── */}
-      {phase === 'REGISTRATION' && (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-200 gap-4">
-          <p className="text-gray-600">Waiting for players to register for the tournament.</p>
-          {session?.sessionType === SessionType.TOURNAMENT_DOUBLES ? (
-            <button onClick={handleStartPoolPlay} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
-              Start Pool Play
-            </button>
-          ) : (
-            <button onClick={handleGenerateBracket} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
-              Generate Bracket
-            </button>
-          )}
-        </div>
-      )}
-
       {/* ─── POOL PLAY Phase ─── */}
       {phase === 'POOL_PLAY' && (
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <h3 className="text-xl font-semibold">Pool Play Matches</h3>
+        <div className="flex flex-col gap-6">
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <div>
+              <h3 className="text-2xl font-black">Pool Play Matches</h3>
+              <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                {completedPoolMatches.length} of {poolMatches.length} matches completed
+              </p>
+            </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">{completedPoolMatches.length}/{poolMatches.length} completed</span>
               {pendingPoolMatches.length === 0 && poolMatches.length > 0 && (
-                <button onClick={handleStartPoolPlay} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
-                  Generate Next Pool Round
+                <button onClick={handleStartPoolPlay} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+                  Next Pool Round →
                 </button>
               )}
               {allPoolDone && (
-                <button onClick={handleGenerateBracket} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors animate-pulse-soft">
-                  🏟️ Generate Bracket →
+                <button onClick={handleGenerateBracket} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all animate-pulse-soft flex items-center gap-2">
+                  <span>🏟️ Generate Double Elimination Bracket</span>
+                  <ArrowRight size={16} />
                 </button>
               )}
             </div>
@@ -293,20 +527,30 @@ export default function TournamentPanel() {
 
           {/* Pool Standings */}
           {poolMatches.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider">Pool Standings</h4>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                <h4 className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <Shield size={14} className="text-indigo-500" /> Pool Standings
+                </h4>
+                <span className="text-xs text-gray-400 font-medium">Top seeds advance to Winners Bracket</span>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {[...pairs].sort((a, b) => b.poolPlayWins - a.poolPlayWins || b.poolPlayPointDiff - a.poolPlayPointDiff).map((pair, idx) => (
-                  <div key={pair.id} className="px-4 py-2.5 flex items-center justify-between">
+                  <div key={pair.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <div className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${idx < 3 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{idx + 1}</span>
-                      <span className="font-medium text-gray-800">{pair.name || getTeamName(pair.id)}</span>
+                      <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
+                        idx < 3 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                      <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                        {pair.name || getTeamName(pair.id)}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="text-emerald-600 font-bold">{pair.poolPlayWins}W</span>
-                      <span className={`font-medium ${pair.poolPlayPointDiff > 0 ? 'text-emerald-600' : pair.poolPlayPointDiff < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                    <div className="flex items-center gap-6 text-sm">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins}W</span>
+                      <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored} Pts</span>
+                      <span className={`font-mono font-bold text-xs ${pair.poolPlayPointDiff > 0 ? 'text-emerald-600 dark:text-emerald-400' : pair.poolPlayPointDiff < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
                         {pair.poolPlayPointDiff > 0 ? '+' : ''}{pair.poolPlayPointDiff}
                       </span>
                     </div>
@@ -318,69 +562,157 @@ export default function TournamentPanel() {
 
           {/* Pool Match Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {poolMatches.map(match => (
-              <div key={match.id} className={`p-4 rounded-xl shadow-sm border transition-all ${
-                match.status === 'COMPLETED' ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200 hover:border-indigo-300'
-              }`}>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">Match {match.matchNumber} (Round {match.round})</span>
-                  <span className={`text-xs px-2 py-1 rounded-md font-medium ${
-                    match.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}>{match.status === 'COMPLETED' ? '✓ Done' : 'Pending'}</span>
-                </div>
+            {poolMatches.map(match => {
+              const isDone = match.status === 'COMPLETED';
+              const isWinnerA = match.winnerTeamId === match.teamAId && isDone;
+              const isWinnerB = match.winnerTeamId === match.teamBId && isDone;
 
-                <div className={`flex justify-between items-center py-2 border-b border-gray-100 ${match.winnerTeamId === match.teamAId ? 'font-bold text-emerald-700' : ''}`}>
-                  <span className="font-medium">{getTeamName(match.teamAId)}</span>
-                  <span className="text-gray-400 font-mono">{match.scoreA ?? '-'}</span>
-                </div>
-                <div className={`flex justify-between items-center py-2 ${match.winnerTeamId === match.teamBId ? 'font-bold text-emerald-700' : ''}`}>
-                  <span className="font-medium">{getTeamName(match.teamBId)}</span>
-                  <span className="text-gray-400 font-mono">{match.scoreB ?? '-'}</span>
-                </div>
+              return (
+                <div
+                  key={match.id}
+                  className={`p-5 rounded-2xl shadow-sm border transition-all ${
+                    isDone 
+                      ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800' 
+                      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-indigo-400 dark:hover:border-indigo-600'
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Match #{match.matchNumber} (Round {match.round})
+                    </span>
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
+                      isDone 
+                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60' 
+                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                    }`}>
+                      {isDone ? '✓ Completed' : 'Pending'}
+                    </span>
+                  </div>
 
-                {/* Score input for pending matches */}
-                {match.status !== 'COMPLETED' && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
+                  {/* Team A Row */}
+                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl transition-all ${
+                    isWinnerA 
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                      : 'text-gray-900 dark:text-gray-100 font-bold'
+                  }`}>
+                    <span className="truncate mr-2 flex items-center gap-2">
+                      {isWinnerA && <span className="text-emerald-500 font-black">🏆</span>}
+                      {getTeamName(match.teamAId)}
+                    </span>
+                    <span className="font-mono font-black text-xl">{match.scoreA ?? '-'}</span>
+                  </div>
+
+                  {/* Team B Row */}
+                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-all ${
+                    isWinnerB 
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                      : 'text-gray-900 dark:text-gray-100 font-bold'
+                  }`}>
+                    <span className="truncate mr-2 flex items-center gap-2">
+                      {isWinnerB && <span className="text-emerald-500 font-black">🏆</span>}
+                      {getTeamName(match.teamBId)}
+                    </span>
+                    <span className="font-mono font-black text-xl">{match.scoreB ?? '-'}</span>
+                  </div>
+
+                  {/* Score Input Box or Edit Action */}
+                  <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
                     {scoringMatchId === match.id ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <label className="text-xs text-gray-500 mb-1 block">{getTeamName(match.teamAId)}</label>
-                            <input type="number" min="0" max="99" value={scoreA} onChange={e => setScoreA(parseInt(e.target.value) || 0)}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-center font-bold text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+                      <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 animate-slide-up">
+                        <div className="flex items-center gap-2 justify-between">
+                          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            {isDone ? 'Edit Score' : 'Enter Score'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleSwapPoolScores}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1 hover:bg-indigo-100 transition-colors"
+                          >
+                            <RefreshCw size={12} /> Swap Scores / Winner
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 items-center">
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">
+                              {getTeamName(match.teamAId)}
+                            </label>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                              <input
+                                type="number"
+                                min="0"
+                                max="99"
+                                value={scoreA}
+                                onChange={e => setScoreA(parseInt(e.target.value) || 0)}
+                                className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
+                              />
+                              <button onClick={() => setScoreA(scoreA + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                            </div>
                           </div>
-                          <span className="text-gray-400 font-bold mt-4">vs</span>
-                          <div className="flex-1">
-                            <label className="text-xs text-gray-500 mb-1 block">{getTeamName(match.teamBId)}</label>
-                            <input type="number" min="0" max="99" value={scoreB} onChange={e => setScoreB(parseInt(e.target.value) || 0)}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-center font-bold text-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">
+                              {getTeamName(match.teamBId)}
+                            </label>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                              <input
+                                type="number"
+                                min="0"
+                                max="99"
+                                value={scoreB}
+                                onChange={e => setScoreB(parseInt(e.target.value) || 0)}
+                                className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
+                              />
+                              <button onClick={() => setScoreB(scoreB + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                            </div>
                           </div>
                         </div>
+
+                        {scoreA === scoreB ? (
+                          <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
+                        ) : (
+                          <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                          </div>
+                        )}
+
                         <div className="flex gap-2">
-                          <button onClick={() => { setScoringMatchId(null); setScoreA(0); setScoreB(0); }} className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium">Cancel</button>
-                          <button onClick={() => handleScorePoolMatch(match.id)} disabled={scoreA === scoreB}
-                            className="flex-1 px-3 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-medium transition-colors">
-                            {scoreA === scoreB ? 'Scores must differ' : 'Submit Score'}
+                          <button
+                            onClick={() => setScoringMatchId(null)}
+                            className="flex-1 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleSavePoolScore(match.id)}
+                            disabled={scoreA === scoreB}
+                            className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
+                          >
+                            {isDone ? 'Update Score' : 'Save Score'}
                           </button>
                         </div>
                       </div>
+                    ) : isDone ? (
+                      <button
+                        onClick={() => handleOpenPoolScoring(match)}
+                        className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Edit3 size={14} /> Edit Score / Winner
+                      </button>
                     ) : (
-                      <button onClick={() => setScoringMatchId(match.id)} className="w-full px-3 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors">
+                      <button
+                        onClick={() => handleOpenPoolScoring(match)}
+                        className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                      >
                         Enter Score
                       </button>
                     )}
                   </div>
-                )}
-              </div>
-            ))}
-            {poolMatches.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center p-8 text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm gap-3">
-                <p>No pool matches scheduled yet.</p>
-                <button onClick={handleStartPoolPlay} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
-                  Start Pool Play
-                </button>
-              </div>
-            )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -388,16 +720,18 @@ export default function TournamentPanel() {
       {/* ─── BRACKET Phase ─── */}
       {phase === 'BRACKET' && (
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <h3 className="text-xl font-semibold">Bracket Phase</h3>
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-gray-500">Tap a team to advance them</p>
-              {session?.sessionType === SessionType.TOURNAMENT_CHAOS && canAdvanceChaos && (
-                <button onClick={handleAdvanceChaosRound} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors animate-pulse-soft">
-                  🌪️ Generate Next Chaos Round
-                </button>
-              )}
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <div>
+              <h3 className="text-2xl font-black">Bracket Phase</h3>
+              <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                Click any match to score it, edit scores, or swap winners.
+              </p>
             </div>
+            {session?.sessionType === SessionType.TOURNAMENT_CHAOS && canAdvanceChaos && (
+              <button onClick={handleAdvanceChaosRound} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md transition-all animate-pulse-soft">
+                🌪️ Generate Next Chaos Round
+              </button>
+            )}
           </div>
           <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
         </div>
@@ -406,7 +740,7 @@ export default function TournamentPanel() {
       {/* ─── COMPLETED Phase ─── */}
       {phase === 'COMPLETED' && (
         <div className="flex flex-col gap-4">
-          <BracketTree matches={mappedBracketMatches} />
+          <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
         </div>
       )}
     </div>

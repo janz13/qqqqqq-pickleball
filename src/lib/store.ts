@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer } from '@/types/models';
+import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer, TournamentPair } from '@/types/models';
 import { buildNextBatches, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 import { initializeTournament } from '@/engine/tournament-engine';
@@ -47,7 +47,7 @@ interface StoreState {
   endSession: () => void;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
-  startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED') => void;
+  startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => void;
   swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
@@ -603,12 +603,12 @@ export const useStore = create<StoreState>()(
         return newSession;
       },
 
-      startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED') => set((state) => {
+      startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => set((state) => {
         if (!state.session || !state.session.sessionType || state.session.sessionType === 'OPEN_PLAY') return state;
         if (state.session.tournamentState?.phase !== 'REGISTRATION' && state.session.tournamentState) return state;
 
-        const strategy = pairingStrategy || 'RANDOM';
-        const tournamentState = initializeTournament(state.players, state.session.sessionType, strategy);
+        const strategy = pairingStrategy || (customPairs ? 'CUSTOM' : 'RANDOM');
+        const tournamentState = initializeTournament(state.players, state.session.sessionType, strategy, customPairs);
         
         return {
           session: {
