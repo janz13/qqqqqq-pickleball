@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { Trophy, Medal, Award, RefreshCw, Edit3, X, Check } from 'lucide-react';
+import { Trophy, Medal, Award, RefreshCw, Edit3, X, Check, Flame, Crown, ArrowDown, Layout, Shield } from 'lucide-react';
 
 export interface TournamentMatch {
   id: string;
@@ -33,67 +33,74 @@ export interface BracketTreeProps {
 
 export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   const hasDoubleElim = matches.some(m => m.isLosersBracket || m.isGrandFinals);
-  const [activeTab, setActiveTab] = useState<'winners' | 'losers' | 'finals'>('winners');
+  
+  // Default to 'all' for Liquipedia Main Event view!
+  const [viewMode, setViewMode] = useState<'all' | 'winners' | 'losers' | 'finals'>('all');
   
   // Scoring / Editing Modal State
   const [activeMatchForScoring, setActiveMatchForScoring] = useState<TournamentMatch | null>(null);
   const [modalScore1, setModalScore1] = useState(11);
   const [modalScore2, setModalScore2] = useState(9);
 
-  // Filter matches based on active tab if Double Elimination
-  const filteredMatches = hasDoubleElim
-    ? matches.filter(m => {
-        if (activeTab === 'winners') return !m.isLosersBracket && !m.isGrandFinals;
-        if (activeTab === 'losers') return !!m.isLosersBracket;
-        if (activeTab === 'finals') return !!m.isGrandFinals;
-        return true;
-      })
-    : matches;
+  // Separate matches into Upper Bracket, Lower Bracket, and Grand Finals
+  const upperMatches = matches.filter(m => !m.isLosersBracket && !m.isGrandFinals);
+  const lowerMatches = matches.filter(m => !!m.isLosersBracket);
+  const finalsMatches = matches.filter(m => !!m.isGrandFinals);
+  const grandFinalMatch = finalsMatches[0] || matches[matches.length - 1];
 
-  // Group matches by round for the active tab
-  const rounds = filteredMatches.reduce((acc, match) => {
-    if (!acc[match.round]) {
-      acc[match.round] = [];
-    }
+  // Group Upper Bracket by round
+  const upperRounds = upperMatches.reduce((acc, match) => {
+    if (!acc[match.round]) acc[match.round] = [];
     acc[match.round].push(match);
     return acc;
   }, {} as Record<number, TournamentMatch[]>);
+  const upperRoundNums = Object.keys(upperRounds).map(Number).sort((a, b) => a - b);
 
-  const roundNumbers = Object.keys(rounds)
-    .map(Number)
-    .sort((a, b) => a - b);
+  // Group Lower Bracket by round
+  const lowerRounds = lowerMatches.reduce((acc, match) => {
+    if (!acc[match.round]) acc[match.round] = [];
+    acc[match.round].push(match);
+    return acc;
+  }, {} as Record<number, TournamentMatch[]>);
+  const lowerRoundNums = Object.keys(lowerRounds).map(Number).sort((a, b) => a - b);
 
-  const getRoundName = (roundNum: number, matchCount: number) => {
-    if (activeTab === 'finals' || hasDoubleElim && roundNum > 100) return 'Grand Finals';
-    if (activeTab === 'losers') {
-      if (matchCount === 1) return 'Losers Finals';
-      if (matchCount === 2) return 'Losers Semifinals';
-      return `Losers R${roundNum}`;
-    }
-    if (matchCount === 1) return 'Championship';
-    if (matchCount === 2) return 'Semifinals';
-    if (matchCount >= 3 && matchCount <= 4) return 'Quarterfinals';
-    return `Round of ${matchCount * 2}`;
+  // Helper for Round Titles (Liquipedia style)
+  const getUpperRoundTitle = (roundNum: number, matchCount: number) => {
+    if (matchCount === 1) return 'Upper Bracket Final';
+    if (matchCount === 2) return 'Upper Bracket Semifinals';
+    if (matchCount === 4) return 'Upper Bracket Quarterfinals';
+    return `Upper Bracket Round ${roundNum}`;
+  };
+
+  const getLowerRoundTitle = (roundNum: number, matchCount: number, totalRounds: number) => {
+    if (roundNum === totalRounds) return 'Lower Bracket Final';
+    if (roundNum === totalRounds - 1 && matchCount === 1) return 'Lower Bracket Semifinal';
+    if (matchCount === 2) return `Lower Bracket Round ${roundNum}`;
+    return `Lower Bracket Round ${roundNum}`;
   };
 
   // Determine champion and podium
   let champion: string | null = null;
   let secondPlace: string | null = null;
   let thirdPlace: string | null = null;
+  let fourthPlace: string | null = null;
 
   if (hasDoubleElim) {
-    // Grand Finals match
-    const gfMatch = matches.find(m => m.isGrandFinals) || matches[matches.length - 1];
-    if (gfMatch && gfMatch.winner) {
-      champion = gfMatch.winner;
-      secondPlace = gfMatch.winner === gfMatch.player1 ? gfMatch.player2 ?? null : gfMatch.player1 ?? null;
+    if (grandFinalMatch && grandFinalMatch.winner) {
+      champion = grandFinalMatch.winner;
+      secondPlace = grandFinalMatch.winner === grandFinalMatch.player1 ? grandFinalMatch.player2 ?? null : grandFinalMatch.player1 ?? null;
       
-      // Third place is loser of Losers Finals
-      const lbMatches = matches.filter(m => m.isLosersBracket);
-      const maxLbRound = Math.max(0, ...lbMatches.map(m => m.round));
-      const lbFinals = lbMatches.find(m => m.round === maxLbRound);
+      // Third place is loser of Lower Bracket Final
+      const maxLbRound = Math.max(0, ...lowerMatches.map(m => m.round));
+      const lbFinals = lowerMatches.find(m => m.round === maxLbRound);
       if (lbFinals && lbFinals.winner) {
         thirdPlace = lbFinals.winner === lbFinals.player1 ? lbFinals.player2 ?? null : lbFinals.player1 ?? null;
+      }
+
+      // Fourth place is loser of Lower Bracket Semifinal
+      const lbSemis = lowerMatches.find(m => m.round === maxLbRound - 1);
+      if (lbSemis && lbSemis.winner) {
+        fourthPlace = lbSemis.winner === lbSemis.player1 ? lbSemis.player2 ?? null : lbSemis.player1 ?? null;
       }
     }
   } else {
@@ -103,8 +110,6 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     if (finalsMatch && finalsMatch.winner) {
       champion = finalsMatch.winner;
       secondPlace = finalsMatch.winner === finalsMatch.player1 ? finalsMatch.player2 ?? null : finalsMatch.player1 ?? null;
-      
-      // 3rd place from semis
       const semisMatches = matches.filter(m => m.round === maxRound - 1);
       if (semisMatches.length === 2 && semisMatches.every(m => m.winner)) {
         const losers = semisMatches.map(m => (m.winner === m.player1 ? m.player2 : m.player1)).filter(Boolean);
@@ -136,6 +141,104 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     setActiveMatchForScoring(null);
   };
 
+  // Liquipedia Match Card Component
+  const renderLiquipediaMatchCard = (match: TournamentMatch, bracketType: 'upper' | 'lower' | 'final') => {
+    const hasWinner = !!match.winner;
+    const isP1Winner = match.winner === match.player1 && hasWinner;
+    const isP2Winner = match.winner === match.player2 && hasWinner;
+    const isPlayable = !!match.player1 && !!match.player2;
+
+    return (
+      <div key={match.id} className="relative flex items-center h-full">
+        <div
+          onClick={() => {
+            if (onMatchClick && isPlayable) {
+              handleOpenScoreModal(match);
+            }
+          }}
+          className={`w-[270px] rounded-xl overflow-hidden shadow-sm transition-all duration-200 border ${
+            isPlayable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/40 hover:scale-[1.01]' : 'opacity-70'
+          } ${
+            hasWinner
+              ? 'border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-gray-900'
+              : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900'
+          }`}
+        >
+          {/* Liquipedia Style Header */}
+          <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center text-[10px] font-bold text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1.5 uppercase tracking-wider font-extrabold">
+              {bracketType === 'upper' && <Trophy size={11} className="text-indigo-500" />}
+              {bracketType === 'lower' && <Flame size={11} className="text-amber-500" />}
+              {bracketType === 'final' && <Crown size={11} className="text-emerald-500" />}
+              Match #{match.position}
+            </span>
+            {bracketType === 'upper' && (
+              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
+                <ArrowDown size={10} /> To LB
+              </span>
+            )}
+            {bracketType === 'lower' && (
+              <span className="text-[9px] text-rose-500 font-semibold">
+                Elimination
+              </span>
+            )}
+            {bracketType === 'final' && (
+              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">
+                Championship
+              </span>
+            )}
+          </div>
+
+          {/* Opponent 1 Row */}
+          <div
+            className={`px-3 py-2.5 flex justify-between items-center border-b border-gray-100 dark:border-gray-800 transition-colors ${
+              isP1Winner
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-black'
+                : hasWinner && !isP1Winner
+                  ? 'text-gray-400 dark:text-gray-500 line-through'
+                  : 'text-gray-900 dark:text-gray-100 font-bold'
+            }`}
+          >
+            <span className="truncate mr-2 flex items-center gap-2 text-xs">
+              {isP1Winner && <span className="text-emerald-500 font-black">✓</span>}
+              {match.player1 || <span className="text-gray-400 italic font-normal">TBD</span>}
+            </span>
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-black text-xs ${
+              isP1Winner
+                ? 'bg-emerald-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
+            }`}>
+              {match.score1 ?? '-'}
+            </span>
+          </div>
+
+          {/* Opponent 2 Row */}
+          <div
+            className={`px-3 py-2.5 flex justify-between items-center transition-colors ${
+              isP2Winner
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-black'
+                : hasWinner && !isP2Winner
+                  ? 'text-gray-400 dark:text-gray-500 line-through'
+                  : 'text-gray-900 dark:text-gray-100 font-bold'
+            }`}
+          >
+            <span className="truncate mr-2 flex items-center gap-2 text-xs">
+              {isP2Winner && <span className="text-emerald-500 font-black">✓</span>}
+              {match.player2 || <span className="text-gray-400 italic font-normal">TBD</span>}
+            </span>
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-black text-xs ${
+              isP2Winner
+                ? 'bg-emerald-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
+            }`}>
+              {match.score2 ?? '-'}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (matches.length === 0) {
     return (
       <div className="flex items-center justify-center p-12 bg-white dark:bg-gray-900 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 text-gray-400">
@@ -146,49 +249,60 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
   return (
     <div className="flex flex-col gap-6 w-full">
-      {/* ─── Double Elimination Tabs ─── */}
+      {/* ─── Liquipedia Navigation Controls ─── */}
       {hasDoubleElim && (
-        <div className="flex items-center justify-center gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl max-w-md mx-auto w-full shadow-inner">
-          <button
-            onClick={() => setActiveTab('winners')}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'winners'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <span>🏆</span>
-            <span>Winners</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('losers')}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'losers'
-                ? 'bg-white dark:bg-gray-900 text-amber-600 dark:text-amber-400 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <span>🔥</span>
-            <span>Losers</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('finals')}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-              activeTab === 'finals'
-                ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            <span>👑</span>
-            <span>Finals</span>
-          </button>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl shadow-inner">
+            <button
+              onClick={() => setViewMode('all')}
+              className={`py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                viewMode === 'all'
+                  ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <Layout size={14} /> Full Lineup (TI Format)
+            </button>
+            <button
+              onClick={() => setViewMode('winners')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                viewMode === 'winners'
+                  ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <Trophy size={14} /> Upper Bracket
+            </button>
+            <button
+              onClick={() => setViewMode('losers')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                viewMode === 'losers'
+                  ? 'bg-white dark:bg-gray-900 text-amber-600 dark:text-amber-400 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <Flame size={14} /> Lower Bracket
+            </button>
+            <button
+              onClick={() => setViewMode('finals')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                viewMode === 'finals'
+                  ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <Crown size={14} /> Grand Finals
+            </button>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium hidden sm:inline">
+            Scroll or pinch to zoom • Drag to pan
+          </span>
         </div>
       )}
 
       {/* ─── Podium Display ─── */}
       {champion && (
-        <div className="flex justify-center items-end h-64 gap-2 md:gap-4 mb-4 mt-4 animate-slide-up">
-          {/* 2nd Place */}
+        <div className="flex justify-center items-end h-64 gap-2 md:gap-4 mb-2 mt-2 animate-slide-up">
           {secondPlace && (
             <div className="flex flex-col items-center w-1/3 max-w-[180px]">
               <div className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700">
@@ -201,7 +315,6 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </div>
           )}
 
-          {/* 1st Place */}
           <div className="flex flex-col items-center w-1/3 max-w-[200px] z-10 relative">
             <div className="text-sm md:text-base font-extrabold text-amber-900 dark:text-amber-200 bg-gradient-to-r from-yellow-200 to-yellow-100 dark:from-yellow-900/60 dark:to-amber-900/60 px-4 py-2 rounded-full shadow-md mb-2 text-center border border-yellow-300 dark:border-yellow-700 truncate w-full">
               {champion}
@@ -212,7 +325,6 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </div>
           </div>
 
-          {/* 3rd Place */}
           {thirdPlace && (
             <div className="flex flex-col items-center w-1/3 max-w-[180px]">
               <div className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700">
@@ -227,10 +339,10 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
         </div>
       )}
 
-      {/* ─── Bracket Tree Canvas ─── */}
-      <div className="w-full bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[600px] relative shadow-sm">
+      {/* ─── Liquipedia Canvas ─── */}
+      <div className="w-full bg-white dark:bg-gray-950 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[650px] relative shadow-sm">
         <TransformWrapper
-          initialScale={1}
+          initialScale={0.85}
           minScale={0.1}
           maxScale={3}
           centerOnInit={true}
@@ -241,104 +353,92 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           {({ zoomIn, zoomOut, resetTransform }) => (
             <>
               {/* Zoom Controls */}
-              <div className="absolute bottom-4 right-4 z-40 flex gap-2 bg-white/90 dark:bg-gray-800/90 p-1.5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 backdrop-blur-md">
-                <button onClick={() => zoomOut()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Zoom Out">
+              <div className="absolute bottom-4 right-4 z-40 flex gap-2 bg-white/90 dark:bg-gray-900/90 p-1.5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 backdrop-blur-md">
+                <button onClick={() => zoomOut()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom Out">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button onClick={() => zoomIn()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Zoom In">
+                <button onClick={() => zoomIn()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom In">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button onClick={() => resetTransform()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Reset View">
+                <button onClick={() => resetTransform()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Reset View">
                   <RefreshCw size={18} />
                 </button>
               </div>
               
               <TransformComponent wrapperClass="w-full h-full cursor-grab active:cursor-grabbing" contentClass="p-16">
-                <div className="flex gap-16 min-h-[500px]">
-                  {roundNumbers.map((round) => {
-                    const roundMatches = rounds[round].sort((a, b) => a.position - b.position);
+                <div className="flex gap-16 min-h-[600px] items-start">
+                  
+                  {/* Left Column: Upper & Lower Bracket Stacks (Liquipedia Format) */}
+                  <div className="flex flex-col gap-16">
+                    
+                    {/* ─── UPPER BRACKET (TOP) ─── */}
+                    {(viewMode === 'all' || viewMode === 'winners') && upperRoundNums.length > 0 && (
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                          <Trophy size={16} /> Upper Bracket (Double Elimination)
+                        </div>
 
-                    return (
-                      <div key={round} className="flex flex-col justify-around min-w-[280px] relative">
-                        <h3 className="absolute -top-10 w-full text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
-                          {getRoundName(round, roundMatches.length)}
-                        </h3>
-
-                        <div className="flex flex-col justify-around h-full gap-8">
-                          {roundMatches.map((match) => {
-                            const hasWinner = !!match.winner;
-                            const isP1Winner = match.winner === match.player1 && hasWinner;
-                            const isP2Winner = match.winner === match.player2 && hasWinner;
-                            const isPlayable = !!match.player1 && !!match.player2;
-
+                        <div className="flex gap-14">
+                          {upperRoundNums.map((round) => {
+                            const roundMatches = upperRounds[round].sort((a, b) => a.position - b.position);
                             return (
-                              <div key={match.id} className="relative flex items-center h-full">
-                                {/* The Match Card */}
-                                <div 
-                                  onClick={() => {
-                                    if (onMatchClick && isPlayable) {
-                                      handleOpenScoreModal(match);
-                                    }
-                                  }}
-                                  className={`w-full rounded-2xl shadow-sm overflow-hidden z-10 transition-all duration-200 border ${
-                                    isPlayable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/50' : 'opacity-70'
-                                  } ${
-                                    hasWinner 
-                                      ? 'border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-gray-900' 
-                                      : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md'
-                                  }`}
-                                >
-                                  {/* Top Bar with Match Number & Edit Action */}
-                                  <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
-                                    <span>Match #{match.position}</span>
-                                    {isPlayable && onMatchClick && (
-                                      <span className="text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline">
-                                        <Edit3 size={11} /> {hasWinner ? 'Edit Score' : 'Score'}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* Player 1 Row */}
-                                  <div
-                                    className={`px-4 py-3 flex justify-between items-center border-b border-gray-100 dark:border-gray-800 transition-colors ${
-                                      isP1Winner 
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold' 
-                                        : hasWinner && !isP1Winner 
-                                          ? 'text-gray-400 dark:text-gray-500 line-through' 
-                                          : 'text-gray-900 dark:text-gray-100 font-bold'
-                                    }`}
-                                  >
-                                    <span className="truncate mr-2 flex items-center gap-2">
-                                      {isP1Winner && <span className="text-emerald-500 font-black">✓</span>}
-                                      {match.player1 || <span className="text-gray-400 italic font-normal">TBD</span>}
-                                    </span>
-                                    <span className="font-mono font-black text-sm">{match.score1 ?? '-'}</span>
-                                  </div>
-
-                                  {/* Player 2 Row */}
-                                  <div
-                                    className={`px-4 py-3 flex justify-between items-center transition-colors ${
-                                      isP2Winner 
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold' 
-                                        : hasWinner && !isP2Winner 
-                                          ? 'text-gray-400 dark:text-gray-500 line-through' 
-                                          : 'text-gray-900 dark:text-gray-100 font-bold'
-                                    }`}
-                                  >
-                                    <span className="truncate mr-2 flex items-center gap-2">
-                                      {isP2Winner && <span className="text-emerald-500 font-black">✓</span>}
-                                      {match.player2 || <span className="text-gray-400 italic font-normal">TBD</span>}
-                                    </span>
-                                    <span className="font-mono font-black text-sm">{match.score2 ?? '-'}</span>
-                                  </div>
+                              <div key={`ub_${round}`} className="flex flex-col justify-around min-w-[270px] relative">
+                                <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+                                  {getUpperRoundTitle(round, roundMatches.length)}
+                                </h3>
+                                <div className="flex flex-col justify-around h-full gap-8">
+                                  {roundMatches.map(m => renderLiquipediaMatchCard(m, 'upper'))}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
                       </div>
-                    );
-                  })}
+                    )}
+
+                    {/* ─── LOWER BRACKET (BOTTOM) ─── */}
+                    {(viewMode === 'all' || viewMode === 'losers') && lowerRoundNums.length > 0 && (
+                      <div className="space-y-6 pt-4 border-t-2 border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                          <Flame size={16} /> Lower Bracket (Survival & Elimination)
+                        </div>
+
+                        <div className="flex gap-14">
+                          {lowerRoundNums.map((round) => {
+                            const roundMatches = lowerRounds[round].sort((a, b) => a.position - b.position);
+                            return (
+                              <div key={`lb_${round}`} className="flex flex-col justify-around min-w-[270px] relative">
+                                <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+                                  {getLowerRoundTitle(round, roundMatches.length, lowerRoundNums.length)}
+                                </h3>
+                                <div className="flex flex-col justify-around h-full gap-8">
+                                  {roundMatches.map(m => renderLiquipediaMatchCard(m, 'lower'))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── RIGHT COLUMN: GRAND FINALS ─── */}
+                  {(viewMode === 'all' || viewMode === 'finals') && grandFinalMatch && (
+                    <div className="flex flex-col justify-center items-center min-h-[500px] pl-12 border-l-2 border-dashed border-gray-200 dark:border-gray-800 self-center">
+                      <div className="space-y-6 text-center">
+                        <div className="flex items-center justify-center gap-2 pb-2 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                          <Crown size={18} /> Grand Finals
+                        </div>
+                        <div className="bg-gradient-to-b from-amber-50 to-emerald-50 dark:from-amber-950/20 dark:to-emerald-950/20 p-2 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xl">
+                          {renderLiquipediaMatchCard(grandFinalMatch, 'final')}
+                        </div>
+                        <p className="text-[11px] font-bold text-gray-400 max-w-[240px]">
+                          Upper Bracket Winner meets Lower Bracket Winner for the Championship Title!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </TransformComponent>
             </>
