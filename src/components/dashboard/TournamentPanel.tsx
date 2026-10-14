@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
 import { SessionType, TournamentPair, Player } from '@/types/models';
-import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield } from 'lucide-react';
+import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound } from '@/engine/tournament-engine';
 
 export default function TournamentPanel() {
@@ -15,6 +15,7 @@ export default function TournamentPanel() {
   const [scoreB, setScoreB] = useState(9);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isEditingPairs, setIsEditingPairs] = useState(false);
+  const [showPoolStandingsInBracket, setShowPoolStandingsInBracket] = useState(false);
 
   // Pair Builder State
   const [draftPairs, setDraftPairs] = useState<TournamentPair[]>([]);
@@ -40,7 +41,7 @@ export default function TournamentPanel() {
         const partner = checkedInPlayers.find(x => x.id === p.lockedPartnerId);
         if (partner) {
           initialPairs.push({
-            id: `pair_${initialPairs.length + 1}`,
+            id: 'pair_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
             player1Id: p.id,
             player2Id: partner.id,
             name: `${p.name} & ${partner.name}`,
@@ -73,7 +74,7 @@ export default function TournamentPanel() {
     for (let i = 0; i < shuffled.length; i += 2) {
       if (i + 1 < shuffled.length) {
         newPairs.push({
-          id: `pair_${newPairs.length + 1}`,
+          id: 'pair_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
           player1Id: shuffled[i].id,
           player2Id: shuffled[i + 1].id,
           name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
@@ -93,7 +94,7 @@ export default function TournamentPanel() {
     for (let i = 0; i < shuffled.length; i += 2) {
       if (i + 1 < shuffled.length) {
         newPairs.push({
-          id: `pair_${newPairs.length + 1}`,
+          id: 'pair_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
           player1Id: shuffled[i].id,
           player2Id: shuffled[i + 1].id,
           name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
@@ -114,7 +115,7 @@ export default function TournamentPanel() {
     if (!p1 || !p2) return;
 
     const newPair: TournamentPair = {
-      id: `pair_${draftPairs.length + 1}`,
+      id: 'pair_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       player1Id: p1.id,
       player2Id: p2.id,
       name: `${p1.name} & ${p2.name}`,
@@ -135,12 +136,32 @@ export default function TournamentPanel() {
 
   const handleStartWithCustomPairs = () => {
     if (draftPairs.length < 2) return;
+    if (isEditingPairs && state && session) {
+      const newPairs = draftPairs.map((p, idx) => ({
+        ...p,
+        seed: idx + 1,
+        poolPlayWins: 0,
+        poolPlayPointDiff: 0,
+        poolPlayPointsScored: 0
+      }));
+      const newPoolMatches = buildPoolPlayRound({ ...state, pairs: newPairs, matches: [] }, 4);
+      useStore.getState().updateSession(session.id, {
+        tournamentState: {
+          ...state,
+          pairs: newPairs,
+          matches: newPoolMatches,
+          phase: 'POOL_PLAY'
+        }
+      });
+      setIsEditingPairs(false);
+      return;
+    }
     useStore.getState().startTournament('CUSTOM', draftPairs);
     setIsEditingPairs(false);
   };
 
   // ─── No tournament state or in custom pair builder mode ───
-  if (!state || isEditingPairs) {
+  if (!state || state.phase === 'REGISTRATION' || isEditingPairs) {
     const canStart = session?.sessionType && session.sessionType !== 'OPEN_PLAY';
     const isDoubles = session?.sessionType === SessionType.TOURNAMENT_DOUBLES;
 
@@ -158,7 +179,12 @@ export default function TournamentPanel() {
           </div>
           {isEditingPairs && (
             <button
-              onClick={() => setIsEditingPairs(false)}
+              onClick={() => {
+                if (state?.pairs) {
+                  setDraftPairs(state.pairs);
+                }
+                setIsEditingPairs(false);
+              }}
               className="px-4 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 font-bold"
             >
               Cancel Edit
@@ -719,7 +745,7 @@ export default function TournamentPanel() {
 
       {/* ─── BRACKET Phase ─── */}
       {phase === 'BRACKET' && (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           <div className="flex justify-between items-center flex-wrap gap-4">
             <div>
               <h3 className="text-2xl font-black">Bracket Phase</h3>
@@ -733,6 +759,54 @@ export default function TournamentPanel() {
               </button>
             )}
           </div>
+
+          {/* Collapsible Pool Play Standings */}
+          {poolMatches.length > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowPoolStandingsInBracket(!showPoolStandingsInBracket)}
+                className="w-full px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Shield size={16} className="text-indigo-500" />
+                  <span className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest">
+                    Pool Play Standings ({completedPoolMatches.length} Matches Completed)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400">
+                  <span>{showPoolStandingsInBracket ? 'Hide Standings' : 'View Standings'}</span>
+                  {showPoolStandingsInBracket ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </div>
+              </button>
+              {showPoolStandingsInBracket && (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {[...pairs].sort((a, b) => (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0) || (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0)).map((pair, idx) => (
+                    <div key={pair.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
+                          idx < 3 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                          {pair.name || getTeamName(pair.id)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins ?? 0}W</span>
+                        <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored ?? 0} Pts</span>
+                        <span className={`font-mono font-bold text-xs ${(pair.poolPlayPointDiff ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : (pair.poolPlayPointDiff ?? 0) < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
+                          {(pair.poolPlayPointDiff ?? 0) > 0 ? '+' : ''}{pair.poolPlayPointDiff ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
         </div>
       )}

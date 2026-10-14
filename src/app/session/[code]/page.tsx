@@ -181,18 +181,54 @@ export default function PlayerMonitorPage() {
       !m.endedAtEpochMs && (m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
     );
 
-    if (currentMatch && currentMatch.id !== lastMatchId.current) {
-      lastMatchId.current = currentMatch.id;
-      
+    let matchId: string | null = null;
+    let court = '';
+    let partner = 'Unknown';
+    let opponents = 'Unknown';
+
+    if (currentMatch) {
+      matchId = currentMatch.id;
       const isTeamA = currentMatch.teamA.includes(selectedPlayerId);
       const myTeamIds = isTeamA ? currentMatch.teamA : currentMatch.teamB;
       const oppTeamIds = isTeamA ? currentMatch.teamB : currentMatch.teamA;
       
       const partnerId = myTeamIds.find(id => id !== selectedPlayerId);
-      const partner = players.find(p => p.id === partnerId)?.name || 'Unknown';
-      const opponents = oppTeamIds.map(id => players.find(p => p.id === id)?.name).join(' & ');
-      const court = courts.find(c => c.currentMatchId === currentMatch.id)?.label || 'A Court';
+      partner = players.find(p => p.id === partnerId)?.name || 'Unknown';
+      opponents = oppTeamIds.map(id => players.find(p => p.id === id)?.name).filter(Boolean).join(' & ') || 'Opponents';
+      court = courts.find(c => c.currentMatchId === currentMatch.id)?.label || 'A Court';
+    } else if (session.tournamentState?.matches) {
+      // Also search session.tournamentState.matches for the player's team
+      const tState = session.tournamentState;
+      const activeTourneyMatch = tState.matches.find(tm => {
+        if (tm.status !== 'IN_PROGRESS' && tm.status !== 'READY') return false;
+        if (tm.endedAtEpochMs != null) return false;
+        const pairA = tState.pairs.find(p => p.id === tm.teamAId);
+        const pairB = tState.pairs.find(p => p.id === tm.teamBId);
+        const inA = pairA ? (pairA.player1Id === selectedPlayerId || pairA.player2Id === selectedPlayerId) : false;
+        const inB = pairB ? (pairB.player1Id === selectedPlayerId || pairB.player2Id === selectedPlayerId) : false;
+        return inA || inB;
+      });
 
+      if (activeTourneyMatch) {
+        matchId = activeTourneyMatch.id;
+        const pairA = tState.pairs.find(p => p.id === activeTourneyMatch.teamAId);
+        const pairB = tState.pairs.find(p => p.id === activeTourneyMatch.teamBId);
+        const inA = pairA ? (pairA.player1Id === selectedPlayerId || pairA.player2Id === selectedPlayerId) : false;
+        const myPair = inA ? pairA : pairB;
+        const oppPair = inA ? pairB : pairA;
+
+        const partnerId = myPair ? (myPair.player1Id === selectedPlayerId ? myPair.player2Id : myPair.player1Id) : null;
+        partner = players.find(p => p.id === partnerId)?.name || 'Unknown';
+
+        const pOpp1 = players.find(p => p.id === oppPair?.player1Id)?.name;
+        const pOpp2 = players.find(p => p.id === oppPair?.player2Id)?.name;
+        opponents = oppPair?.name || [pOpp1, pOpp2].filter(Boolean).join(' & ') || 'Opponents';
+        court = courts.find(c => c.id === activeTourneyMatch.courtId || c.currentMatchId === activeTourneyMatch.id)?.label || 'Tournament Court';
+      }
+    }
+
+    if (matchId && matchId !== lastMatchId.current) {
+      lastMatchId.current = matchId;
       setActiveNotification({ court, partner, opponents });
 
       // Trigger browser notification (wrapped in try-catch for strict mobile webviews)
@@ -219,7 +255,7 @@ export default function PlayerMonitorPage() {
         console.error("Browser notifications not supported or blocked in this webview", err);
       }
     }
-  }, [matches, selectedPlayerId, session, players, courts]);
+  }, [matches, selectedPlayerId, session, players, courts, session?.tournamentState?.matches]);
 
   const [activeAnnouncement, setActiveAnnouncement] = useState<{ text: string, ts: number } | null>(null);
   const seenAnnouncementTs = useRef<number | null>(null);
@@ -300,8 +336,7 @@ export default function PlayerMonitorPage() {
   if (isTournament) {
     const tState = session.tournamentState!;
     displayMatches = tState.matches.filter(tm => 
-      (tm.status === 'IN_PROGRESS' || tm.status === 'COMPLETED') &&
-      tm.teamAId && tm.teamBId // Exclude BYEs which have a null team ID
+      tm.teamAId && tm.teamBId // Include all matches with assigned teams (scheduled, in-progress, completed)
     ).map(tm => {
       const pairA = tState.pairs.find(p => p.id === tm.teamAId);
       const pairB = tState.pairs.find(p => p.id === tm.teamBId);
@@ -352,6 +387,7 @@ export default function PlayerMonitorPage() {
 
   const completedMatches = displayMatches.filter(m => (m as any).status === 'COMPLETED' || ((m as any).status == null && m.endedAtEpochMs != null));
   const inProgressMatches = displayMatches.filter(m => (m as any).status === 'IN_PROGRESS' || ((m as any).status == null && m.endedAtEpochMs == null));
+  const pendingMatches = displayMatches.filter(m => (m as any).status === 'PENDING' || (m as any).status === 'READY');
   const sortedCompletedMatches = [...completedMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
   );
@@ -363,6 +399,10 @@ export default function PlayerMonitorPage() {
 
   const myInProgressMatches = selectedPlayerId
     ? inProgressMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
+    : [];
+
+  const myPendingMatches = selectedPlayerId
+    ? pendingMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId))
     : [];
 
   const filteredCompletedMatches = gamesFilter === 'mine' && selectedPlayerId
@@ -397,6 +437,18 @@ export default function PlayerMonitorPage() {
           </div>
         </div>
       </header>
+
+      {session.sessionType && session.sessionType !== 'OPEN_PLAY' && !session.tournamentState && (
+        <div className="max-w-7xl mx-auto px-4 mb-6">
+          <div className="bg-blue-600/20 border border-blue-500/40 rounded-2xl p-6 text-center text-blue-200 space-y-2">
+            <Trophy size={36} className="mx-auto text-blue-400 animate-pulse" />
+            <h3 className="text-xl font-bold text-white">Waiting for Tournament to Start</h3>
+            <p className="text-sm text-slate-300 max-w-md mx-auto">
+              The tournament has been announced! The organizer will generate the match bracket shortly.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 mb-6">
         <div className="flex bg-slate-800 p-1 rounded-2xl overflow-x-auto hide-scrollbar">
@@ -670,6 +722,47 @@ export default function PlayerMonitorPage() {
               </div>
             )}
 
+            {/* Upcoming / Scheduled Games */}
+            {((gamesFilter === 'all' && pendingMatches.length > 0) || (gamesFilter === 'mine' && myPendingMatches.length > 0)) && (
+              <div className="mb-6 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                  <Clock size={14} className="text-amber-400" />
+                  Upcoming & Scheduled Matches
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(gamesFilter === 'mine' ? myPendingMatches : pendingMatches).map(m => {
+                    const court = courts.find(c => c.id === m.courtId);
+                    const courtName = m.courtLabel || court?.label || 'Scheduled Court';
+                    const teamAPlayers = m.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
+                    const teamBPlayers = m.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
+                    const isMyMatch = selectedPlayerId && (m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId));
+
+                    return (
+                      <div key={m.id} className={`bg-slate-800/60 rounded-2xl p-4 border ${isMyMatch ? 'border-amber-500/60 bg-amber-950/20 shadow-md shadow-amber-500/10' : 'border-slate-700/60'}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                            {courtName}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">
+                            {(m as any).status === 'READY' ? 'Ready to Play' : 'Scheduled'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <div className="flex-1 font-semibold text-slate-200">
+                            {teamAPlayers.length > 0 ? teamAPlayers.map(p => p?.name).join(' & ') : ((m as any).teamAName || 'Team A')}
+                          </div>
+                          <span className="text-xs font-bold text-slate-500">VS</span>
+                          <div className="flex-1 font-semibold text-slate-200 text-right">
+                            {teamBPlayers.length > 0 ? teamBPlayers.map(p => p?.name).join(' & ') : ((m as any).teamBName || 'Team B')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {filteredCompletedMatches.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                 <Swords size={48} className="mb-4 opacity-20" />
@@ -831,48 +924,79 @@ export default function PlayerMonitorPage() {
               Session Leaderboard
             </h2>
             
-            {session?.sessionType === 'TOURNAMENT_DOUBLES' || session?.sessionType === 'TOURNAMENT_SINGLE_ELIM' ? (
-              <TournamentLeaderboard tournamentState={session.tournamentState!} players={players} />
-            ) : players.filter(p => p.sessionGamesPlayed > 0).length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                <Trophy size={48} className="mb-4 opacity-20" />
-                <p className="font-medium">No matches completed yet</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {[...players]
-                  .filter(p => p.sessionGamesPlayed > 0)
-                  .sort((a, b) => {
-                    if (b.sessionWins !== a.sessionWins) return b.sessionWins - a.sessionWins;
-                    const winPctA = a.sessionWins / a.sessionGamesPlayed;
-                    const winPctB = b.sessionWins / b.sessionGamesPlayed;
-                    if (winPctB !== winPctA) return winPctB - winPctA;
-                    return b.sessionGamesPlayed - a.sessionGamesPlayed;
-                  })
-                  .map((player, idx) => {
-                  const winPct = ((player.sessionWins / player.sessionGamesPlayed) * 100).toFixed(0);
-                  return (
-                    <div key={player.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
-                      <div className="text-2xl font-black text-slate-500 w-8 text-center font-mono">
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-lg text-slate-100 truncate">{player.name}</h3>
-                        <p className="text-sm text-slate-400 uppercase tracking-widest mt-0.5">Level {player.skillLevel}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-2xl font-black text-emerald-400">
-                          {winPct}%
+            {session?.sessionType && session.sessionType !== 'OPEN_PLAY' && session.tournamentState ? (
+              <TournamentLeaderboard tournamentState={session.tournamentState} players={players} sessionType={session.sessionType} />
+            ) : (() => {
+              const isChaos = session?.sessionType === 'TOURNAMENT_CHAOS';
+              const playerStats = players.map(p => {
+                let wins = p.sessionWins;
+                let losses = p.sessionLosses;
+                let gamesPlayed = p.sessionGamesPlayed;
+                if (isChaos && session?.tournamentState?.matches) {
+                  wins = 0;
+                  losses = 0;
+                  session.tournamentState.matches.forEach(m => {
+                    if (m.status === 'COMPLETED' || m.winnerTeamId) {
+                      const pairA = session.tournamentState!.pairs.find(pair => pair.id === m.teamAId);
+                      const pairB = session.tournamentState!.pairs.find(pair => pair.id === m.teamBId);
+                      const inA = pairA ? (pairA.player1Id === p.id || pairA.player2Id === p.id) : false;
+                      const inB = pairB ? (pairB.player1Id === p.id || pairB.player2Id === p.id) : false;
+                      if (inA) {
+                        if (m.winnerTeamId === m.teamAId) wins++; else losses++;
+                      } else if (inB) {
+                        if (m.winnerTeamId === m.teamBId) wins++; else losses++;
+                      }
+                    }
+                  });
+                  gamesPlayed = wins + losses;
+                }
+                return { ...p, wins, losses, gamesPlayed };
+              }).filter(p => p.gamesPlayed > 0);
+
+              if (playerStats.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                    <Trophy size={48} className="mb-4 opacity-20" />
+                    <p className="font-medium">No matches completed yet</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  {[...playerStats]
+                    .sort((a, b) => {
+                      if (b.wins !== a.wins) return b.wins - a.wins;
+                      const winPctA = a.wins / a.gamesPlayed;
+                      const winPctB = b.wins / b.gamesPlayed;
+                      if (winPctB !== winPctA) return winPctB - winPctA;
+                      return b.gamesPlayed - a.gamesPlayed;
+                    })
+                    .map((player, idx) => {
+                      const winPct = ((player.wins / player.gamesPlayed) * 100).toFixed(0);
+                      return (
+                        <div key={player.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                          <div className="text-2xl font-black text-slate-500 w-8 text-center font-mono">
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-lg text-slate-100 truncate">{player.name}</h3>
+                            <p className="text-sm text-slate-400 uppercase tracking-widest mt-0.5">Level {player.skillLevel}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-2xl font-black text-emerald-400">
+                              {winPct}%
+                            </div>
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
+                              {player.wins}W - {player.losses}L
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-                          {player.sessionWins}W - {player.sessionLosses}L
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      );
+                    })}
+                </div>
+              );
+            })()}
           </div>
         </main>
       )}
@@ -908,53 +1032,69 @@ export default function PlayerMonitorPage() {
       )}
 
       {/* TOURNAMENT TAB */}
-      {(activeTab === 'tournament' || (activeTab === 'queue' && session.sessionType && session.sessionType !== 'OPEN_PLAY')) && session.tournamentState && (
+      {(activeTab === 'tournament' || (activeTab === 'queue' && session.sessionType && session.sessionType !== 'OPEN_PLAY')) && (
         <main className="max-w-7xl mx-auto px-4">
-          <div className="space-y-6">
-            <h2 className="text-3xl font-black tracking-tight mb-2">Tournament Bracket</h2>
-            
-            {session.tournamentState.phase === 'REGISTRATION' && (
-              <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
-                <p className="text-slate-400">Tournament has not started yet. Stay tuned!</p>
+          {!session.tournamentState ? (
+            <div className="glass-dark p-12 rounded-3xl text-center border border-white/5 space-y-4 my-8">
+              <div className="w-16 h-16 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto">
+                <Trophy size={32} />
               </div>
-            )}
-            
-            {session.tournamentState.phase === 'POOL_PLAY' && (
-              <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
-                <p className="text-slate-400">Currently in Pool Play phase. Watch the active courts for your next match!</p>
-              </div>
-            )}
+              <h2 className="text-2xl font-black text-white">Waiting for Tournament to Start</h2>
+              <p className="text-slate-400 max-w-md mx-auto">
+                The organizer is setting up teams and brackets. Tournament matches will appear here once play begins!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <h2 className="text-3xl font-black tracking-tight mb-2">Tournament Bracket</h2>
+              
+              {session.tournamentState.phase === 'REGISTRATION' && (
+                <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
+                  <p className="text-slate-400">Tournament has not started yet. Stay tuned!</p>
+                </div>
+              )}
+              
+              {session.tournamentState.phase === 'POOL_PLAY' && (
+                <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
+                  <p className="text-slate-400">Currently in Pool Play phase. Watch the active courts for your next match!</p>
+                </div>
+              )}
 
-            {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (
-              <div className="pb-4 h-full min-h-[600px]">
-                <BracketTree 
-                  matches={session.tournamentState.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
-                    const getTeamName = (teamId: string | null) => {
-                      if (!teamId) return null;
-                      const pair = session.tournamentState!.pairs.find(p => p.id === teamId);
-                      if (pair?.name) return pair.name;
-                      const p1 = players.find(p => p.id === pair?.player1Id);
-                      const p2 = players.find(p => p.id === pair?.player2Id);
-                      if (p1 && p2) return `${p1.name} & ${p2.name}`;
-                      return 'Unknown Team';
-                    };
-                    const p1Name = getTeamName(m.teamAId);
-                    const p2Name = getTeamName(m.teamBId);
-                    return {
-                      id: m.id,
-                      round: m.round,
-                      position: m.matchNumber,
-                      player1: p1Name,
-                      player2: p2Name,
-                      score1: m.scoreA,
-                      score2: m.scoreB,
-                      winner: m.winnerTeamId === m.teamAId ? p1Name : (m.winnerTeamId === m.teamBId ? p2Name : null)
-                    };
-                  })}
-                />
-              </div>
-            )}
-          </div>
+              {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (
+                <div className="pb-4 h-full min-h-[600px]">
+                  <BracketTree 
+                    matches={session.tournamentState.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
+                      const getTeamName = (teamId: string | null) => {
+                        if (!teamId) return null;
+                        const pair = session.tournamentState!.pairs.find(p => p.id === teamId);
+                        if (pair?.name) return pair.name;
+                        const p1 = players.find(p => p.id === pair?.player1Id);
+                        const p2 = players.find(p => p.id === pair?.player2Id);
+                        if (p1 && p2) return `${p1.name} & ${p2.name}`;
+                        return 'Unknown Team';
+                      };
+                      const p1Name = getTeamName(m.teamAId);
+                      const p2Name = getTeamName(m.teamBId);
+                      return {
+                        id: m.id,
+                        round: m.round,
+                        position: m.matchNumber,
+                        player1: p1Name,
+                        player2: p2Name,
+                        player1Id: m.teamAId,
+                        player2Id: m.teamBId,
+                        score1: m.scoreA,
+                        score2: m.scoreB,
+                        winner: m.winnerTeamId === m.teamAId ? p1Name : (m.winnerTeamId === m.teamBId ? p2Name : null),
+                        isLosersBracket: m.isLosersBracket,
+                        isGrandFinals: m.id.startsWith('gf_')
+                      };
+                    })}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </main>
       )}
 

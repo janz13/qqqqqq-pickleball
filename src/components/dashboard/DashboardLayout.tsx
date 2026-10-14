@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
-import { LayoutDashboard, Users, Trophy, Settings, Megaphone, ClipboardList } from 'lucide-react';
+import { SessionType } from '@/types/models';
+import { LayoutDashboard, Users, Trophy, Settings, Megaphone, ClipboardList, LucideIcon } from 'lucide-react';
 import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
@@ -32,14 +33,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }, 100);
   };
 
-  const tabs = [
-    { id: 'courts', label: 'Courts', icon: LayoutDashboard },
+  const isTournament = session?.sessionType && session.sessionType !== SessionType.OPEN_PLAY;
+
+  const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
+    { id: 'courts', label: isTournament ? 'Tournament' : 'Courts', icon: LayoutDashboard },
     { id: 'roster', label: 'Roster', icon: Users },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
     { id: 'history', label: 'History', icon: ClipboardList },
     { id: 'announcements', label: 'Announce', icon: Megaphone },
     { id: 'settings', label: 'Settings', icon: Settings },
-  ] as const;
+  ];
 
   return (
     <div className="flex h-screen overflow-hidden bg-transparent">
@@ -178,7 +181,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="space-y-4 mb-6 text-gray-700 dark:text-gray-300">
               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                 <span className="font-semibold">Total Matches Played:</span>
-                <span className="text-xl font-bold">{matches.length}</span>
+                <span className="text-xl font-bold">{matches.length + (session?.tournamentState?.matches.filter(m => m.status === 'COMPLETED').length || 0)}</span>
               </div>
               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                 <span className="font-semibold">Total Players:</span>

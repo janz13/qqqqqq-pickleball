@@ -1,5 +1,21 @@
 import { Player, TournamentState, TournamentPair, TournamentMatch, SessionType, Team } from '@/types/models';
 
+// ─────────────────────────────────────────────────────────────
+//  Utility: Fisher-Yates Shuffle (uniform random distribution)
+// ─────────────────────────────────────────────────────────────
+function shuffle<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Initialize Tournament
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Generates an initial tournament state from a list of players.
  */
@@ -31,7 +47,7 @@ export function initializeTournament(
         const partner = availablePlayers.find(x => x.id === p.lockedPartnerId);
         if (partner) {
           pairs.push({
-            id: `pair_${pairs.length + 1}`,
+            id: `pair_${Date.now()}_${pairs.length}`,
             player1Id: p.id,
             player2Id: partner.id,
             name: `${p.name} & ${partner.name}`,
@@ -46,38 +62,34 @@ export function initializeTournament(
       }
     }
     
-    // Then randomly pair the rest
-    const remaining = availablePlayers.filter(p => !pairedIds.has(p.id)).sort(() => Math.random() - 0.5);
-    for (let i = 0; i < remaining.length; i += 2) {
-      if (i + 1 < remaining.length) {
-        pairs.push({
-          id: `pair_${pairs.length + 1}`,
-          player1Id: remaining[i].id,
-          player2Id: remaining[i + 1].id,
-          name: `${remaining[i].name} & ${remaining[i + 1].name}`,
-          seed: pairs.length + 1,
-          poolPlayWins: 0,
-          poolPlayPointDiff: 0,
-          poolPlayPointsScored: 0
-        });
-      }
+    // Then randomly pair the rest using Fisher-Yates
+    const remaining = shuffle(availablePlayers.filter(p => !pairedIds.has(p.id)));
+    for (let i = 0; i + 1 < remaining.length; i += 2) {
+      pairs.push({
+        id: `pair_${Date.now()}_${pairs.length}`,
+        player1Id: remaining[i].id,
+        player2Id: remaining[i + 1].id,
+        name: `${remaining[i].name} & ${remaining[i + 1].name}`,
+        seed: pairs.length + 1,
+        poolPlayWins: 0,
+        poolPlayPointDiff: 0,
+        poolPlayPointsScored: 0
+      });
     }
   } else {
-    // Completely random
-    const shuffled = [...availablePlayers].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < shuffled.length; i += 2) {
-      if (i + 1 < shuffled.length) {
-        pairs.push({
-          id: `pair_${pairs.length + 1}`,
-          player1Id: shuffled[i].id,
-          player2Id: shuffled[i + 1].id,
-          name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
-          seed: pairs.length + 1,
-          poolPlayWins: 0,
-          poolPlayPointDiff: 0,
-          poolPlayPointsScored: 0
-        });
-      }
+    // Completely random using Fisher-Yates
+    const shuffled = shuffle(availablePlayers);
+    for (let i = 0; i + 1 < shuffled.length; i += 2) {
+      pairs.push({
+        id: `pair_${Date.now()}_${pairs.length}`,
+        player1Id: shuffled[i].id,
+        player2Id: shuffled[i + 1].id,
+        name: `${shuffled[i].name} & ${shuffled[i + 1].name}`,
+        seed: pairs.length + 1,
+        poolPlayWins: 0,
+        poolPlayPointDiff: 0,
+        poolPlayPointsScored: 0
+      });
     }
   }
 
@@ -88,8 +100,8 @@ export function initializeTournament(
 
   // For Chaos Roulette, build the first round immediately as "BRACKET" phase.
   if (type === SessionType.TOURNAMENT_CHAOS) {
-    // Generate Round 1 matches for the initial pairs
     for (let i = 0; i < pairs.length; i += 2) {
+      const hasBye = i + 1 >= pairs.length;
       matches.push({
         id: `chaos_match_${(i/2) + 1}`,
         round: 1,
@@ -98,12 +110,12 @@ export function initializeTournament(
         nextMatchId: null,
         nextLoserMatchId: null,
         teamAId: pairs[i].id,
-        teamBId: (i + 1 < pairs.length) ? pairs[i + 1].id : null, // Bye if odd number of pairs
+        teamBId: hasBye ? null : pairs[i + 1].id,
         courtId: null,
-        status: (i + 1 < pairs.length) ? 'PENDING' : 'COMPLETED',
+        status: hasBye ? 'COMPLETED' : 'READY',
         startedAtEpochMs: null,
-        endedAtEpochMs: (i + 1 < pairs.length) ? null : Date.now(),
-        winnerTeamId: (i + 1 < pairs.length) ? null : pairs[i].id,
+        endedAtEpochMs: hasBye ? Date.now() : null,
+        winnerTeamId: hasBye ? pairs[i].id : null,
         scoreA: null,
         scoreB: null,
         isBestOf3: false,
@@ -131,47 +143,115 @@ export function initializeTournament(
   return state;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Pool Play Round Generation (Swiss System)
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Builds the next round of pool play matches using a simple Swiss system.
+ * Avoids rematches from previous rounds when possible.
  */
 export function buildPoolPlayRound(state: TournamentState, courtsCount: number): TournamentMatch[] {
   // Sort pairs by wins, then point diff
   const sortedPairs = [...state.pairs].sort((a, b) => {
-    if (a.poolPlayWins !== b.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
-    return b.poolPlayPointDiff - a.poolPlayPointDiff;
+    if ((a.poolPlayWins ?? 0) !== (b.poolPlayWins ?? 0)) return (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0);
+    return (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0);
   });
+
+  // Build set of previous matchups for anti-rematch
+  const previousMatchups = new Set<string>();
+  for (const m of state.matches) {
+    if (m.teamAId && m.teamBId) {
+      previousMatchups.add(`${m.teamAId}_${m.teamBId}`);
+      previousMatchups.add(`${m.teamBId}_${m.teamAId}`);
+    }
+  }
 
   const newMatches: TournamentMatch[] = [];
   const activeMatchIds = state.matches.length;
-
   const nextRoundNum = state.matches.length > 0 ? Math.max(...state.matches.map(m => m.round)) + 1 : 1;
 
-  for (let i = 0; i < sortedPairs.length; i += 2) {
-    if (i + 1 < sortedPairs.length) {
-      newMatches.push({
-        id: `pool_match_${activeMatchIds + (i/2) + 1}`,
-        round: nextRoundNum,
-        isLosersBracket: false,
-        matchNumber: activeMatchIds + (i/2) + 1,
-        nextMatchId: null,
-        nextLoserMatchId: null,
-        teamAId: sortedPairs[i].id,
-        teamBId: sortedPairs[i + 1].id,
-        courtId: null,
-        status: 'PENDING',
-        startedAtEpochMs: null,
-        endedAtEpochMs: null,
-        winnerTeamId: null,
-        scoreA: null,
-        scoreB: null,
-        isBestOf3: false,
-        games: []
-      });
+  // Swiss pairing with anti-rematch: try adjacent, swap if rematch
+  const paired = new Set<number>();
+  const pairings: [number, number][] = [];
+  
+  for (let i = 0; i < sortedPairs.length; i++) {
+    if (paired.has(i)) continue;
+    
+    // Find the best opponent (prefer adjacent, avoid rematch)
+    let bestJ = -1;
+    for (let j = i + 1; j < sortedPairs.length; j++) {
+      if (paired.has(j)) continue;
+      const key = `${sortedPairs[i].id}_${sortedPairs[j].id}`;
+      if (!previousMatchups.has(key)) {
+        bestJ = j;
+        break;
+      }
+      if (bestJ === -1) bestJ = j; // fallback to rematch if no other option
     }
+    
+    if (bestJ !== -1) {
+      pairings.push([i, bestJ]);
+      paired.add(i);
+      paired.add(bestJ);
+    }
+  }
+
+  // Handle odd pair out: give them a bye with auto-win
+  const byePairIndex = Array.from({ length: sortedPairs.length }, (_, i) => i).find(i => !paired.has(i));
+
+  for (let p = 0; p < pairings.length; p++) {
+    const [idxA, idxB] = pairings[p];
+    newMatches.push({
+      id: `pool_match_${activeMatchIds + p + 1}`,
+      round: nextRoundNum,
+      isLosersBracket: false,
+      matchNumber: activeMatchIds + p + 1,
+      nextMatchId: null,
+      nextLoserMatchId: null,
+      teamAId: sortedPairs[idxA].id,
+      teamBId: sortedPairs[idxB].id,
+      courtId: null,
+      status: 'READY',
+      startedAtEpochMs: null,
+      endedAtEpochMs: null,
+      winnerTeamId: null,
+      scoreA: null,
+      scoreB: null,
+      isBestOf3: false,
+      games: []
+    });
+  }
+
+  // Bye match for odd pair
+  if (byePairIndex !== undefined) {
+    newMatches.push({
+      id: `pool_match_${activeMatchIds + pairings.length + 1}`,
+      round: nextRoundNum,
+      isLosersBracket: false,
+      matchNumber: activeMatchIds + pairings.length + 1,
+      nextMatchId: null,
+      nextLoserMatchId: null,
+      teamAId: sortedPairs[byePairIndex].id,
+      teamBId: null,
+      courtId: null,
+      status: 'COMPLETED',
+      startedAtEpochMs: Date.now(),
+      endedAtEpochMs: Date.now(),
+      winnerTeamId: sortedPairs[byePairIndex].id,
+      scoreA: null,
+      scoreB: null,
+      isBestOf3: false,
+      games: []
+    });
   }
 
   return newMatches;
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Bracket Seeding
+// ─────────────────────────────────────────────────────────────
 
 function getBracketSeeding(size: number): number[] {
   let seeding = [1, 2];
@@ -187,15 +267,26 @@ function getBracketSeeding(size: number): number[] {
   return seeding;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Bracket Generation (Single & Double Elimination)
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Transitions from Pool Play to Bracket phase.
+ * Idempotent: removes any existing bracket matches before generating.
  */
 export function generateBracket(state: TournamentState, type: SessionType): TournamentState {
   // Sort final pool play standings
   const sortedPairs = [...state.pairs].sort((a, b) => {
-    if (a.poolPlayWins !== b.poolPlayWins) return b.poolPlayWins - a.poolPlayWins;
-    if (a.poolPlayPointDiff !== b.poolPlayPointDiff) return b.poolPlayPointDiff - a.poolPlayPointDiff;
-    return b.poolPlayPointsScored - a.poolPlayPointsScored;
+    if ((a.poolPlayWins ?? 0) !== (b.poolPlayWins ?? 0)) return (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0);
+    if ((a.poolPlayPointDiff ?? 0) !== (b.poolPlayPointDiff ?? 0)) return (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0);
+    return (b.poolPlayPointsScored ?? 0) - (a.poolPlayPointsScored ?? 0);
+  });
+
+  // Update seeds based on pool standings
+  const updatedPairs = state.pairs.map(p => {
+    const rank = sortedPairs.findIndex(sp => sp.id === p.id);
+    return { ...p, seed: rank >= 0 ? rank + 1 : p.seed };
   });
 
   const numParticipants = sortedPairs.length;
@@ -203,13 +294,46 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
 
   const p = Math.pow(2, Math.ceil(Math.log2(numParticipants)));
   const seeding = getBracketSeeding(p);
+  
+  // Remove any existing bracket matches (idempotent)
+  const poolMatches = state.matches.filter(m => m.id.startsWith('pool_match_'));
+  
   const matches: TournamentMatch[] = [];
-  const startMatchNum = state.matches.length + 1;
+  let matchCounter = poolMatches.length + 1;
 
   // ───────── DOUBLE ELIMINATION (The Grand Slam) ─────────
   if (type === SessionType.TOURNAMENT_DOUBLES) {
     const k = Math.log2(p);
-    let matchCounter = startMatchNum;
+
+    // Special case: 2 teams — just play Grand Finals directly (no LB needed)
+    if (numParticipants === 2) {
+      const gfMatch: TournamentMatch = {
+        id: `gf_m${matchCounter}`,
+        round: 1,
+        isLosersBracket: false,
+        matchNumber: matchCounter++,
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: sortedPairs[0].id,
+        teamBId: sortedPairs[1].id,
+        courtId: null,
+        status: 'READY',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: true,
+        games: []
+      };
+      matches.push(gfMatch);
+
+      return {
+        pairs: updatedPairs,
+        phase: 'BRACKET',
+        matches: [...poolMatches, ...matches]
+      };
+    }
 
     // 1. Winners Bracket matches
     const wbNodes: TournamentMatch[][] = [];
@@ -295,6 +419,30 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
     };
     matches.push(gfMatch);
 
+    // 4. Grand Finals Reset match (activated if LB champion wins GF)
+    const gfResetMatch: TournamentMatch = {
+      id: `gf_reset_m${matchCounter}`,
+      round: k + 2,
+      isLosersBracket: false,
+      matchNumber: matchCounter++,
+      nextMatchId: null,
+      nextLoserMatchId: null,
+      teamAId: null,
+      teamBId: null,
+      courtId: null,
+      status: 'PENDING',
+      startedAtEpochMs: null,
+      endedAtEpochMs: null,
+      winnerTeamId: null,
+      scoreA: null,
+      scoreB: null,
+      isBestOf3: true,
+      games: []
+    };
+    // Link GF -> GF Reset
+    gfMatch.nextMatchId = gfResetMatch.id;
+    matches.push(gfResetMatch);
+
     // ─── Link Winners Bracket Internal ───
     for (let r = 0; r < k - 1; r++) {
       for (let i = 0; i < wbNodes[r].length; i++) {
@@ -359,11 +507,12 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
       wbNodes[0][i].teamBId = pairB ? pairB.id : null;
     }
 
-    // ─── Resolve Byes in WB R1 ───
+    // ─── Resolve Byes in WB R1 (and propagate to LB) ───
     for (const m of wbNodes[0]) {
       if ((m.teamAId && !m.teamBId) || (!m.teamAId && m.teamBId)) {
         m.winnerTeamId = m.teamAId || m.teamBId;
         m.status = 'COMPLETED';
+        // Advance winner to WB R2
         if (m.nextMatchId) {
           const next = matches.find(x => x.id === m.nextMatchId);
           if (next) {
@@ -371,20 +520,71 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
             else if (!next.teamBId && next.teamAId !== m.winnerTeamId) next.teamBId = m.winnerTeamId;
           }
         }
+        // CRITICAL FIX: Bye produces no loser, so propagate bye to LB
+        // Mark the linked LB match slot as "no opponent" (the other loser fills it)
+        // We do NOT route a null loser — instead, we'll resolve LB byes below
+      }
+    }
+
+    // ─── Resolve Byes in LB R1 ───
+    // LB R1 matches receive losers from WB R1. If a WB R1 match was a bye,
+    // no loser drops down. Check LB R1 matches: if only one team, auto-advance.
+    if (lbNodes[0]) {
+      for (const lbm of lbNodes[0]) {
+        // Count how many WB R1 matches feed into this LB match
+        const feeders = wbNodes[0].filter(wm => wm.nextLoserMatchId === lbm.id);
+        const losersForThisMatch: string[] = [];
+        for (const feeder of feeders) {
+          if (feeder.status === 'COMPLETED' && feeder.teamAId && feeder.teamBId) {
+            // Real match completed — has a loser
+            const loserId = feeder.winnerTeamId === feeder.teamAId ? feeder.teamBId : feeder.teamAId;
+            if (loserId) losersForThisMatch.push(loserId);
+          }
+          // If bye (only one team), no loser is produced
+        }
+
+        if (losersForThisMatch.length >= 2) {
+          lbm.teamAId = losersForThisMatch[0];
+          lbm.teamBId = losersForThisMatch[1];
+          lbm.status = 'READY';
+        } else if (losersForThisMatch.length === 1) {
+          // Only one loser — auto-advance as bye
+          lbm.teamAId = losersForThisMatch[0];
+          lbm.teamBId = null;
+          lbm.winnerTeamId = losersForThisMatch[0];
+          lbm.status = 'COMPLETED';
+          lbm.endedAtEpochMs = Date.now();
+          // Advance this bye winner to LB R2
+          if (lbm.nextMatchId) {
+            const nextLb = matches.find(x => x.id === lbm.nextMatchId);
+            if (nextLb) {
+              if (!nextLb.teamAId) nextLb.teamAId = losersForThisMatch[0];
+              else if (!nextLb.teamBId && nextLb.teamAId !== losersForThisMatch[0]) nextLb.teamBId = losersForThisMatch[0];
+            }
+          }
+        }
+        // If 0 losers (both feeders were byes), LB match stays empty — will be
+        // auto-resolved when other paths fill it
+      }
+    }
+
+    // Set READY status for any WB/LB match that now has both teams
+    for (const m of matches) {
+      if (m.status === 'PENDING' && m.teamAId && m.teamBId) {
+        m.status = 'READY';
       }
     }
 
     return {
-      ...state,
+      pairs: updatedPairs,
       phase: 'BRACKET',
-      matches: [...state.matches, ...matches]
+      matches: [...poolMatches, ...matches]
     };
   }
 
   // ───────── SINGLE ELIMINATION (Knockout Sprint & Chaos) ─────────
   const numRounds = Math.log2(p);
   const matchNodes: TournamentMatch[][] = [];
-  let matchCounter = startMatchNum;
   
   // Create match nodes
   for (let r = 0; r < numRounds; r++) {
@@ -450,16 +650,29 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
     }
   }
 
+  // Set READY status for matches with both teams
+  for (const m of matches) {
+    if (m.status === 'PENDING' && m.teamAId && m.teamBId) {
+      m.status = 'READY';
+    }
+  }
+
   return {
-    ...state,
+    pairs: updatedPairs,
     phase: 'BRACKET',
-    matches: [...state.matches, ...matches]
+    matches: [...poolMatches, ...matches]
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Advance Match Winner (with completion detection & GF reset)
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Advances a winner in the bracket (and routes loser in double elimination).
  * Also supports reversing/swapping a winner on an already-completed match.
+ * Automatically detects tournament completion.
+ * Handles Grand Finals bracket reset for double elimination.
  */
 export function advanceMatchWinner(
   state: TournamentState, 
@@ -471,35 +684,116 @@ export function advanceMatchWinner(
   const match = state.matches.find(m => m.id === matchId);
   if (!match) return state;
 
+  // Validate winnerTeamId
+  if (winnerTeamId !== match.teamAId && winnerTeamId !== match.teamBId) {
+    return state;
+  }
+
+  // Reject tied scores
+  if (scoreA !== undefined && scoreA !== null && scoreB !== undefined && scoreB !== null) {
+    if (scoreA === scoreB) return state;
+  }
+
   const oldWinnerId = match.winnerTeamId;
-  const oldLoserId = match.winnerTeamId ? (match.winnerTeamId === match.teamAId ? match.teamBId : match.teamAId) : null;
   const newLoserId = winnerTeamId === match.teamAId ? match.teamBId : match.teamAId;
+
+  // Handle Best-of-3: append to games array, only complete when 2 wins reached
+  let matchCompleted = true;
+  let updatedGames = [...(match.games || [])];
+  if (match.isBestOf3 && scoreA !== undefined && scoreA !== null && scoreB !== undefined && scoreB !== null) {
+    const gameWinnerId = scoreA > scoreB ? match.teamAId! : match.teamBId!;
+    updatedGames.push({ winnerId: gameWinnerId, scoreA, scoreB });
+    
+    const teamAGameWins = updatedGames.filter(g => g.winnerId === match.teamAId).length;
+    const teamBGameWins = updatedGames.filter(g => g.winnerId === match.teamBId).length;
+    
+    if (teamAGameWins < 2 && teamBGameWins < 2) {
+      // Series not yet decided
+      matchCompleted = false;
+    }
+  }
 
   let updatedMatches = state.matches.map(m => {
     if (m.id === matchId) {
       return { 
         ...m, 
-        winnerTeamId, 
-        status: 'COMPLETED' as const,
+        winnerTeamId: matchCompleted ? winnerTeamId : m.winnerTeamId, 
+        status: matchCompleted ? 'COMPLETED' as const : 'IN_PROGRESS' as const,
         scoreA: scoreA !== undefined ? scoreA : m.scoreA,
         scoreB: scoreB !== undefined ? scoreB : m.scoreB,
-        endedAtEpochMs: m.endedAtEpochMs || Date.now()
+        endedAtEpochMs: matchCompleted ? (m.endedAtEpochMs || Date.now()) : m.endedAtEpochMs,
+        games: updatedGames
       };
     }
     return m;
   });
 
-  // Advance winner to nextMatchId
-  if (match.nextMatchId) {
+  // If Bo3 series not decided yet, return early
+  if (!matchCompleted) {
+    return { ...state, matches: updatedMatches };
+  }
+
+  // ─── Handle Grand Finals Reset Logic ───
+  const isGrandFinals = match.id.startsWith('gf_') && !match.id.startsWith('gf_reset_');
+  if (isGrandFinals && match.nextMatchId) {
+    const gfResetMatch = updatedMatches.find(m => m.id === match.nextMatchId);
+    if (gfResetMatch) {
+      // Determine which team came from Winners Bracket vs Losers Bracket
+      // WB champion is teamA (placed first by WB Finals advancement)
+      const wbChampion = match.teamAId;
+      
+      if (winnerTeamId !== wbChampion && wbChampion) {
+        // LB champion won GF — need a bracket reset match!
+        updatedMatches = updatedMatches.map(m => {
+          if (m.id === gfResetMatch.id) {
+            return {
+              ...m,
+              teamAId: wbChampion,
+              teamBId: winnerTeamId,
+              status: 'READY' as const
+            };
+          }
+          return m;
+        });
+        return { ...state, matches: updatedMatches };
+      } else {
+        // WB champion won — no reset needed, tournament is over
+        return { ...state, matches: updatedMatches, phase: 'COMPLETED' };
+      }
+    }
+  }
+
+  // ─── Handle GF Reset match completion ───
+  if (match.id.startsWith('gf_reset_')) {
+    return { ...state, matches: updatedMatches, phase: 'COMPLETED' };
+  }
+
+  // Advance winner to nextMatchId (skip GF reset handling — already done above)
+  if (match.nextMatchId && !isGrandFinals) {
     updatedMatches = updatedMatches.map(m => {
       if (m.id === match.nextMatchId) {
         const nextM = { ...m };
         if (oldWinnerId && (nextM.teamAId === oldWinnerId || nextM.teamBId === oldWinnerId)) {
+          // Replacing previous winner
           if (nextM.teamAId === oldWinnerId) nextM.teamAId = winnerTeamId;
           else nextM.teamBId = winnerTeamId;
+          
+          // If next match was already completed, cascade reset downstream
+          if (nextM.status === 'COMPLETED') {
+            nextM.status = 'READY';
+            nextM.winnerTeamId = null;
+            nextM.scoreA = null;
+            nextM.scoreB = null;
+            nextM.endedAtEpochMs = null;
+            nextM.games = [];
+          }
         } else {
           if (!nextM.teamAId) nextM.teamAId = winnerTeamId;
           else if (!nextM.teamBId && nextM.teamAId !== winnerTeamId) nextM.teamBId = winnerTeamId;
+        }
+        // Set READY if both teams present
+        if (nextM.teamAId && nextM.teamBId && nextM.status === 'PENDING') {
+          nextM.status = 'READY';
         }
         return nextM;
       }
@@ -509,20 +803,46 @@ export function advanceMatchWinner(
 
   // Drop loser to nextLoserMatchId (for Double Elimination)
   if (match.nextLoserMatchId && newLoserId) {
+    const oldLoserId = oldWinnerId ? (oldWinnerId === match.teamAId ? match.teamBId : match.teamAId) : null;
     updatedMatches = updatedMatches.map(m => {
       if (m.id === match.nextLoserMatchId) {
         const loserM = { ...m };
         if (oldLoserId && (loserM.teamAId === oldLoserId || loserM.teamBId === oldLoserId)) {
           if (loserM.teamAId === oldLoserId) loserM.teamAId = newLoserId;
           else loserM.teamBId = newLoserId;
+          
+          // Cascade reset if already completed
+          if (loserM.status === 'COMPLETED') {
+            loserM.status = 'READY';
+            loserM.winnerTeamId = null;
+            loserM.scoreA = null;
+            loserM.scoreB = null;
+            loserM.endedAtEpochMs = null;
+            loserM.games = [];
+          }
         } else {
           if (!loserM.teamAId) loserM.teamAId = newLoserId;
           else if (!loserM.teamBId && loserM.teamAId !== newLoserId) loserM.teamBId = newLoserId;
+        }
+        // Set READY if both teams present
+        if (loserM.teamAId && loserM.teamBId && loserM.status === 'PENDING') {
+          loserM.status = 'READY';
         }
         return loserM;
       }
       return m;
     });
+  }
+
+  // ─── Tournament Completion Detection ───
+  // If this match has no nextMatchId (it's the final), tournament is done
+  if (!match.nextMatchId && !match.nextLoserMatchId) {
+    // Single elimination final or last chaos match
+    const allBracketMatches = updatedMatches.filter(m => !m.id.startsWith('pool_match_'));
+    const allDone = allBracketMatches.every(m => m.status === 'COMPLETED');
+    if (allDone && allBracketMatches.length > 0) {
+      return { ...state, matches: updatedMatches, phase: 'COMPLETED' };
+    }
   }
 
   return {
@@ -531,9 +851,14 @@ export function advanceMatchWinner(
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Update Pool Play Match Score
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Updates or edits a completed pool play match score.
  * Safely recalculates pair stats (poolPlayWins, poolPlayPointsScored, poolPlayPointDiff).
+ * Rejects tied scores.
  */
 export function updatePoolMatchScore(
   state: TournamentState,
@@ -543,6 +868,9 @@ export function updatePoolMatchScore(
 ): TournamentState {
   const match = state.matches.find(m => m.id === matchId);
   if (!match) return state;
+
+  // Reject tied scores — pickleball has no ties
+  if (scoreA === scoreB) return state;
 
   const newWinnerTeamId = scoreA > scoreB ? match.teamAId : match.teamBId;
   const newLoserTeamId = scoreA > scoreB ? match.teamBId : match.teamAId;
@@ -622,6 +950,10 @@ export function updatePoolMatchScore(
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Chaos Roulette Round Advancement
+// ─────────────────────────────────────────────────────────────
+
 export function advanceChaosRound(state: TournamentState, players: Player[]): TournamentState {
   const currentRound = Math.max(0, ...state.matches.map(m => m.round));
   if (currentRound === 0) return state;
@@ -646,30 +978,56 @@ export function advanceChaosRound(state: TournamentState, players: Player[]): To
   }
 
   // If there are 2 or fewer players left, the tournament is over!
-  // Wait, if it's 4 players, they form 2 pairs, and play 1 match (Finals).
   if (survivingPlayerIds.length <= 2) {
     return { ...state, phase: 'COMPLETED' };
   }
 
-  // Shuffle the surviving individual players to form new pairs!
-  const shuffledPlayers = [...survivingPlayerIds].sort(() => Math.random() - 0.5);
+  // Track previous partners to avoid re-pairing
+  const previousPartners = new Map<string, Set<string>>();
+  for (const pair of state.pairs) {
+    if (!previousPartners.has(pair.player1Id)) previousPartners.set(pair.player1Id, new Set());
+    if (!previousPartners.has(pair.player2Id)) previousPartners.set(pair.player2Id, new Set());
+    previousPartners.get(pair.player1Id)!.add(pair.player2Id);
+    previousPartners.get(pair.player2Id)!.add(pair.player1Id);
+  }
+
+  // Shuffle surviving players using Fisher-Yates, then pair with anti-repeat
+  const shuffledPlayers = shuffle(survivingPlayerIds);
   
   const newPairs: TournamentPair[] = [];
   const startPairId = state.pairs.length + 1;
-  for (let i = 0; i < shuffledPlayers.length; i += 2) {
-    if (i + 1 < shuffledPlayers.length) {
+  const used = new Set<string>();
+
+  for (let i = 0; i < shuffledPlayers.length; i++) {
+    if (used.has(shuffledPlayers[i])) continue;
+    
+    // Find the best partner (first unused player who wasn't a previous partner)
+    let bestPartner = -1;
+    for (let j = i + 1; j < shuffledPlayers.length; j++) {
+      if (used.has(shuffledPlayers[j])) continue;
+      const prevPartners = previousPartners.get(shuffledPlayers[i]);
+      if (!prevPartners || !prevPartners.has(shuffledPlayers[j])) {
+        bestPartner = j;
+        break;
+      }
+      if (bestPartner === -1) bestPartner = j; // fallback
+    }
+    
+    if (bestPartner !== -1) {
       const p1 = players.find(p => p.id === shuffledPlayers[i]);
-      const p2 = players.find(p => p.id === shuffledPlayers[i + 1]);
+      const p2 = players.find(p => p.id === shuffledPlayers[bestPartner]);
       newPairs.push({
-        id: `chaos_pair_${startPairId + (i/2)}`,
+        id: `chaos_pair_${startPairId + newPairs.length}`,
         player1Id: shuffledPlayers[i],
-        player2Id: shuffledPlayers[i + 1],
+        player2Id: shuffledPlayers[bestPartner],
         name: `${p1?.name || 'Unknown'} & ${p2?.name || 'Unknown'}`,
-        seed: startPairId + (i/2),
+        seed: startPairId + newPairs.length,
         poolPlayWins: 0,
         poolPlayPointDiff: 0,
         poolPlayPointsScored: 0
       });
+      used.add(shuffledPlayers[i]);
+      used.add(shuffledPlayers[bestPartner]);
     }
   }
 
@@ -678,6 +1036,7 @@ export function advanceChaosRound(state: TournamentState, players: Player[]): To
   const nextRound = currentRound + 1;
 
   for (let i = 0; i < newPairs.length; i += 2) {
+    const hasBye = i + 1 >= newPairs.length;
     newMatches.push({
       id: `chaos_match_${startMatchNum + (i/2)}`,
       round: nextRound,
@@ -686,12 +1045,12 @@ export function advanceChaosRound(state: TournamentState, players: Player[]): To
       nextMatchId: null,
       nextLoserMatchId: null,
       teamAId: newPairs[i].id,
-      teamBId: (i + 1 < newPairs.length) ? newPairs[i + 1].id : null,
+      teamBId: hasBye ? null : newPairs[i + 1].id,
       courtId: null,
-      status: (i + 1 < newPairs.length) ? 'PENDING' : 'COMPLETED',
+      status: hasBye ? 'COMPLETED' : 'READY',
       startedAtEpochMs: null,
-      endedAtEpochMs: (i + 1 < newPairs.length) ? null : Date.now(),
-      winnerTeamId: (i + 1 < newPairs.length) ? null : newPairs[i].id,
+      endedAtEpochMs: hasBye ? Date.now() : null,
+      winnerTeamId: hasBye ? newPairs[i].id : null,
       scoreA: null,
       scoreB: null,
       isBestOf3: false,
@@ -699,10 +1058,108 @@ export function advanceChaosRound(state: TournamentState, players: Player[]): To
     });
   }
 
+  // Check if tournament ends: only 1 match and it's the final (or only 1 pair)
+  const isFinalRound = newMatches.length === 1 && newMatches[0].status === 'COMPLETED';
+
   return {
     ...state,
     pairs: [...state.pairs, ...newPairs],
     matches: [...state.matches, ...newMatches],
-    phase: newMatches.length === 1 && newMatches[0].status === 'COMPLETED' ? 'COMPLETED' : 'BRACKET' // if the final match was a bye, which is weird but possible
+    phase: isFinalRound ? 'COMPLETED' : 'BRACKET'
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Helper: Get Tournament Placement (for podium/leaderboard)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns an ordered array of pair IDs from 1st to last based on
+ * bracket-aware placement (not round numbers).
+ */
+export function getTournamentPlacements(state: TournamentState): string[] {
+  const matches = state.matches.filter(m => !m.id.startsWith('pool_match_'));
+  if (matches.length === 0) return state.pairs.map(p => p.id);
+
+  const placements: string[] = [];
+  const placed = new Set<string>();
+
+  // 1. Find Grand Finals (or GF Reset) winner = Champion
+  const gfResetMatch = matches.find(m => m.id.startsWith('gf_reset_') && m.status === 'COMPLETED');
+  const gfMatch = matches.find(m => m.id.startsWith('gf_') && !m.id.startsWith('gf_reset_') && m.status === 'COMPLETED');
+  
+  if (gfResetMatch && gfResetMatch.winnerTeamId) {
+    // GF Reset was played — that winner is champion
+    placements.push(gfResetMatch.winnerTeamId);
+    placed.add(gfResetMatch.winnerTeamId);
+    const loserId = gfResetMatch.winnerTeamId === gfResetMatch.teamAId ? gfResetMatch.teamBId : gfResetMatch.teamAId;
+    if (loserId) { placements.push(loserId); placed.add(loserId); }
+  } else if (gfMatch && gfMatch.winnerTeamId) {
+    // GF completed (WB champion won, no reset needed)
+    placements.push(gfMatch.winnerTeamId);
+    placed.add(gfMatch.winnerTeamId);
+    const loserId = gfMatch.winnerTeamId === gfMatch.teamAId ? gfMatch.teamBId : gfMatch.teamAId;
+    if (loserId) { placements.push(loserId); placed.add(loserId); }
+  }
+
+  // 2. Find LB Finals loser = 3rd place
+  const lbMatches = matches.filter(m => m.isLosersBracket && m.status === 'COMPLETED');
+  if (lbMatches.length > 0) {
+    const lbFinals = lbMatches.reduce((a, b) => a.round > b.round ? a : b);
+    if (lbFinals.winnerTeamId) {
+      const lbFinalsLoserId = lbFinals.winnerTeamId === lbFinals.teamAId ? lbFinals.teamBId : lbFinals.teamAId;
+      if (lbFinalsLoserId && !placed.has(lbFinalsLoserId)) {
+        placements.push(lbFinalsLoserId);
+        placed.add(lbFinalsLoserId);
+      }
+    }
+  }
+
+  // 3. Single elimination: final match winner = champion
+  if (placements.length === 0) {
+    // No GF found — try single elimination final (match with no nextMatchId)
+    const finalMatch = matches.find(m => !m.nextMatchId && m.status === 'COMPLETED');
+    if (finalMatch && finalMatch.winnerTeamId) {
+      placements.push(finalMatch.winnerTeamId);
+      placed.add(finalMatch.winnerTeamId);
+      const loserId = finalMatch.winnerTeamId === finalMatch.teamAId ? finalMatch.teamBId : finalMatch.teamAId;
+      if (loserId) { placements.push(loserId); placed.add(loserId); }
+    }
+
+    // Semi-final losers = T-3rd
+    const semiFinals = matches.filter(m => m.nextMatchId === finalMatch?.id && m.status === 'COMPLETED');
+    for (const sf of semiFinals) {
+      if (sf.winnerTeamId) {
+        const sfLoserId = sf.winnerTeamId === sf.teamAId ? sf.teamBId : sf.teamAId;
+        if (sfLoserId && !placed.has(sfLoserId)) {
+          placements.push(sfLoserId);
+          placed.add(sfLoserId);
+        }
+      }
+    }
+  }
+
+  // 4. Remaining teams: sort by round eliminated (higher = better) and pool play
+  const remainingPairs = state.pairs.filter(p => !placed.has(p.id));
+  const pairLastRound = new Map<string, number>();
+  for (const pair of remainingPairs) {
+    const pairMatches = matches.filter(m => 
+      (m.teamAId === pair.id || m.teamBId === pair.id) && m.status === 'COMPLETED'
+    );
+    const maxRound = pairMatches.length > 0 ? Math.max(...pairMatches.map(m => m.round)) : 0;
+    pairLastRound.set(pair.id, maxRound);
+  }
+
+  remainingPairs.sort((a, b) => {
+    const roundDiff = (pairLastRound.get(b.id) ?? 0) - (pairLastRound.get(a.id) ?? 0);
+    if (roundDiff !== 0) return roundDiff;
+    if ((a.poolPlayWins ?? 0) !== (b.poolPlayWins ?? 0)) return (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0);
+    return (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0);
+  });
+
+  for (const p of remainingPairs) {
+    placements.push(p.id);
+  }
+
+  return placements;
 }

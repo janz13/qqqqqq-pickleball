@@ -48,6 +48,7 @@ interface StoreState {
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
   startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => void;
+  completeTournamentMatch: (matchId: string) => void;
   swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
@@ -605,7 +606,7 @@ export const useStore = create<StoreState>()(
 
       startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => set((state) => {
         if (!state.session || !state.session.sessionType || state.session.sessionType === 'OPEN_PLAY') return state;
-        if (state.session.tournamentState?.phase !== 'REGISTRATION' && state.session.tournamentState) return state;
+        if (state.session.tournamentState && state.session.tournamentState.phase !== 'REGISTRATION' && state.session.tournamentState.phase !== 'POOL_PLAY') return state;
 
         const strategy = pairingStrategy || (customPairs ? 'CUSTOM' : 'RANDOM');
         const tournamentState = initializeTournament(state.players, state.session.sessionType, strategy, customPairs);
@@ -616,6 +617,35 @@ export const useStore = create<StoreState>()(
             tournamentState
           }
         };
+      }),
+
+      completeTournamentMatch: (matchId: string) => set((state) => {
+        const ts = state.session?.tournamentState;
+        if (!ts) return state;
+        const match = ts.matches.find(m => m.id === matchId);
+        if (!match || match.status !== 'COMPLETED' || !match.winnerTeamId) return state;
+        
+        // Find the winning and losing pair
+        const winPair = ts.pairs.find(p => p.id === match.winnerTeamId);
+        const losePairId = match.winnerTeamId === match.teamAId ? match.teamBId : match.teamAId;
+        const losePair = ts.pairs.find(p => p.id === losePairId);
+        if (!winPair || !losePair) return state;
+        
+        // Update player stats
+        const winnerIds = [winPair.player1Id, winPair.player2Id];
+        const loserIds = [losePair.player1Id, losePair.player2Id];
+        
+        const updatedPlayers = state.players.map(p => {
+          if (winnerIds.includes(p.id)) {
+            return { ...p, sessionWins: p.sessionWins + 1, sessionGamesPlayed: p.sessionGamesPlayed + 1, allTimeWins: p.allTimeWins + 1, allTimeGamesPlayed: p.allTimeGamesPlayed + 1 };
+          }
+          if (loserIds.includes(p.id)) {
+            return { ...p, sessionLosses: p.sessionLosses + 1, sessionGamesPlayed: p.sessionGamesPlayed + 1, allTimeLosses: p.allTimeLosses + 1, allTimeGamesPlayed: p.allTimeGamesPlayed + 1 };
+          }
+          return p;
+        });
+        
+        return { players: updatedPlayers };
       }),
 
       swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => set((state) => {

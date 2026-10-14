@@ -31,6 +31,81 @@ export interface BracketTreeProps {
   onMatchClick?: (matchId: string, winnerTeamId: string, scoreA?: number, scoreB?: number) => void;
 }
 
+interface RoundConnectorProps {
+  currentCount: number;
+  nextCount: number;
+}
+
+function RoundConnector({ currentCount, nextCount }: RoundConnectorProps) {
+  const isHalving = currentCount === nextCount * 2;
+  const isSame = currentCount === nextCount;
+
+  return (
+    <div className="flex flex-col w-10 sm:w-12 shrink-0 select-none pointer-events-none">
+      {/* Spacer matching the round title h3 */}
+      <div className="text-center text-xs font-black uppercase tracking-widest mb-4 invisible">
+        &nbsp;
+      </div>
+      {/* Connector lines spanning the match list height */}
+      <div className="h-full relative w-full">
+        <svg
+          className="w-full h-full text-gray-400 dark:text-gray-600 overflow-visible"
+          viewBox="0 0 40 100"
+          preserveAspectRatio="none"
+        >
+          {isHalving ? (
+            Array.from({ length: nextCount }).map((_, j) => {
+              const yA = ((2 * j + 0.5) / currentCount) * 100;
+              const yB = ((2 * j + 1.5) / currentCount) * 100;
+              const yMid = ((j + 0.5) / nextCount) * 100;
+              return (
+                <path
+                  key={j}
+                  d={`M 0 ${yA} H 20 V ${yB} H 0 M 20 ${yMid} H 40`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })
+          ) : isSame ? (
+            Array.from({ length: nextCount }).map((_, j) => {
+              const y = ((j + 0.5) / nextCount) * 100;
+              return (
+                <path
+                  key={j}
+                  d={`M 0 ${y} H 40`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })
+          ) : (
+            Array.from({ length: nextCount }).map((_, j) => {
+              const parentIdx = Math.min(Math.floor((j * currentCount) / nextCount), currentCount - 1);
+              const yCurrent = ((parentIdx + 0.5) / currentCount) * 100;
+              const yNext = ((j + 0.5) / nextCount) * 100;
+              return (
+                <path
+                  key={j}
+                  d={`M 0 ${yCurrent} H 20 V ${yNext} H 40`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })
+          )}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   const hasDoubleElim = matches.some(m => m.isLosersBracket || m.isGrandFinals);
   
@@ -66,10 +141,10 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
   // Helper for Round Titles (Liquipedia style)
   const getUpperRoundTitle = (roundNum: number, matchCount: number) => {
-    if (matchCount === 1) return 'Upper Bracket Final';
-    if (matchCount === 2) return 'Upper Bracket Semifinals';
-    if (matchCount === 4) return 'Upper Bracket Quarterfinals';
-    return `Upper Bracket Round ${roundNum}`;
+    if (matchCount === 1) return hasDoubleElim ? 'Upper Bracket Final' : 'Final';
+    if (matchCount === 2) return hasDoubleElim ? 'Upper Bracket Semifinals' : 'Semifinals';
+    if (matchCount === 4) return hasDoubleElim ? 'Upper Bracket Quarterfinals' : 'Quarterfinals';
+    return hasDoubleElim ? `Upper Bracket Round ${roundNum}` : `Round ${roundNum}`;
   };
 
   const getLowerRoundTitle = (roundNum: number, matchCount: number, totalRounds: number) => {
@@ -112,8 +187,12 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
       secondPlace = finalsMatch.winner === finalsMatch.player1 ? finalsMatch.player2 ?? null : finalsMatch.player1 ?? null;
       const semisMatches = matches.filter(m => m.round === maxRound - 1);
       if (semisMatches.length === 2 && semisMatches.every(m => m.winner)) {
-        const losers = semisMatches.map(m => (m.winner === m.player1 ? m.player2 : m.player1)).filter(Boolean);
-        if (losers.length > 0) thirdPlace = losers[0] ?? null;
+        const losers = semisMatches.map(m => (m.winner === m.player1 ? m.player2 : m.player1)).filter(Boolean) as string[];
+        if (losers.length === 2) {
+          thirdPlace = 'T-3rd: ' + losers.join(' & ');
+        } else if (losers.length === 1) {
+          thirdPlace = losers[0] ?? null;
+        }
       }
     }
   }
@@ -157,7 +236,11 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             }
           }}
           className={`w-[270px] rounded-xl overflow-hidden shadow-sm transition-all duration-200 border ${
-            isPlayable ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/40 hover:scale-[1.01]' : 'opacity-70'
+            onMatchClick && isPlayable
+              ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/40 hover:scale-[1.01]'
+              : isPlayable
+                ? 'cursor-default'
+                : 'opacity-70 cursor-default'
           } ${
             hasWinner
               ? 'border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-gray-900'
@@ -326,8 +409,11 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           </div>
 
           {thirdPlace && (
-            <div className="flex flex-col items-center w-1/3 max-w-[180px]">
-              <div className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col items-center w-1/3 max-w-[220px]">
+              <div
+                className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700"
+                title={thirdPlace}
+              >
                 {thirdPlace}
               </div>
               <div className="w-full h-24 bg-gradient-to-t from-amber-400 to-amber-300 dark:from-amber-900 dark:to-amber-800 rounded-t-2xl flex justify-center pt-4 border-t-4 border-amber-600 shadow-lg relative">
@@ -375,21 +461,34 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                     {(viewMode === 'all' || viewMode === 'winners') && upperRoundNums.length > 0 && (
                       <div className="space-y-6">
                         <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                          <Trophy size={16} /> Upper Bracket (Double Elimination)
+                          <Trophy size={16} /> {hasDoubleElim ? 'Upper Bracket (Double Elimination)' : 'Championship Bracket'}
                         </div>
 
-                        <div className="flex gap-14">
-                          {upperRoundNums.map((round) => {
+                        <div className="flex items-stretch">
+                          {upperRoundNums.map((round, rIndex) => {
                             const roundMatches = upperRounds[round].sort((a, b) => a.position - b.position);
+                            const hasNext = rIndex < upperRoundNums.length - 1;
+                            const nextRound = hasNext ? upperRoundNums[rIndex + 1] : null;
+                            const nextRoundMatches = nextRound ? upperRounds[nextRound] : null;
+
                             return (
-                              <div key={`ub_${round}`} className="flex flex-col justify-around min-w-[270px] relative">
-                                <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
-                                  {getUpperRoundTitle(round, roundMatches.length)}
-                                </h3>
-                                <div className="flex flex-col justify-around h-full gap-8">
-                                  {roundMatches.map(m => renderLiquipediaMatchCard(m, 'upper'))}
+                              <React.Fragment key={`ub_${round}`}>
+                                <div className="flex flex-col justify-around min-w-[270px] relative">
+                                  <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+                                    {getUpperRoundTitle(round, roundMatches.length)}
+                                  </h3>
+                                  <div className="flex flex-col justify-around h-full gap-8">
+                                    {roundMatches.map(m => renderLiquipediaMatchCard(m, 'upper'))}
+                                  </div>
                                 </div>
-                              </div>
+
+                                {hasNext && nextRoundMatches && (
+                                  <RoundConnector
+                                    currentCount={roundMatches.length}
+                                    nextCount={nextRoundMatches.length}
+                                  />
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </div>
@@ -403,18 +502,31 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                           <Flame size={16} /> Lower Bracket (Survival & Elimination)
                         </div>
 
-                        <div className="flex gap-14">
-                          {lowerRoundNums.map((round) => {
+                        <div className="flex items-stretch">
+                          {lowerRoundNums.map((round, rIndex) => {
                             const roundMatches = lowerRounds[round].sort((a, b) => a.position - b.position);
+                            const hasNext = rIndex < lowerRoundNums.length - 1;
+                            const nextRound = hasNext ? lowerRoundNums[rIndex + 1] : null;
+                            const nextRoundMatches = nextRound ? lowerRounds[nextRound] : null;
+
                             return (
-                              <div key={`lb_${round}`} className="flex flex-col justify-around min-w-[270px] relative">
-                                <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
-                                  {getLowerRoundTitle(round, roundMatches.length, lowerRoundNums.length)}
-                                </h3>
-                                <div className="flex flex-col justify-around h-full gap-8">
-                                  {roundMatches.map(m => renderLiquipediaMatchCard(m, 'lower'))}
+                              <React.Fragment key={`lb_${round}`}>
+                                <div className="flex flex-col justify-around min-w-[270px] relative">
+                                  <h3 className="text-center text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+                                    {getLowerRoundTitle(round, roundMatches.length, lowerRoundNums.length)}
+                                  </h3>
+                                  <div className="flex flex-col justify-around h-full gap-8">
+                                    {roundMatches.map(m => renderLiquipediaMatchCard(m, 'lower'))}
+                                  </div>
                                 </div>
-                              </div>
+
+                                {hasNext && nextRoundMatches && (
+                                  <RoundConnector
+                                    currentCount={roundMatches.length}
+                                    nextCount={nextRoundMatches.length}
+                                  />
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </div>
@@ -423,7 +535,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                   </div>
 
                   {/* ─── RIGHT COLUMN: GRAND FINALS ─── */}
-                  {(viewMode === 'all' || viewMode === 'finals') && grandFinalMatch && (
+                  {hasDoubleElim && (viewMode === 'all' || viewMode === 'finals') && grandFinalMatch && (
                     <div className="flex flex-col justify-center items-center min-h-[500px] pl-12 border-l-2 border-dashed border-gray-200 dark:border-gray-800 self-center">
                       <div className="space-y-6 text-center">
                         <div className="flex items-center justify-center gap-2 pb-2 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
