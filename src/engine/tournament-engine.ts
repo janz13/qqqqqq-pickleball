@@ -699,7 +699,7 @@ export function advanceMatchWinner(
 
   // Handle Best-of-3: append to games array, only complete when 2 wins reached
   let matchCompleted = true;
-  let updatedGames = [...(match.games || [])];
+  const updatedGames = [...(match.games || [])];
   if (match.isBestOf3 && scoreA !== undefined && scoreA !== null && scoreB !== undefined && scoreB !== null) {
     const gameWinnerId = scoreA > scoreB ? match.teamAId! : match.teamBId!;
     updatedGames.push({ winnerId: gameWinnerId, scoreA, scoreB });
@@ -836,8 +836,9 @@ export function advanceMatchWinner(
 
   // ─── Tournament Completion Detection ───
   // If this match has no nextMatchId (it's the final), tournament is done
-  if (!match.nextMatchId && !match.nextLoserMatchId) {
-    // Single elimination final or last chaos match
+  // (NOT for Chaos Roulette — Chaos round advancement and completion are managed by advanceChaosRound)
+  if (!match.nextMatchId && !match.nextLoserMatchId && !match.id.startsWith('chaos_')) {
+    // Single elimination final
     const allBracketMatches = updatedMatches.filter(m => !m.id.startsWith('pool_match_'));
     const allDone = allBracketMatches.every(m => m.status === 'COMPLETED');
     if (allDone && allBracketMatches.length > 0) {

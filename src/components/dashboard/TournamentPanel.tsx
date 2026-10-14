@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
-import { SessionType, TournamentPair, Player } from '@/types/models';
+import { SessionType, TournamentPair, Player, TournamentMatch } from '@/types/models';
 import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound } from '@/engine/tournament-engine';
 
@@ -374,14 +374,15 @@ export default function TournamentPanel() {
     if (session && state) {
       const newState = advanceMatchWinner(state, matchId, winnerTeamId, customScoreA, customScoreB);
 
-      // Check if tournament is done
+      // Check if tournament is done (NOT for Chaos — Chaos uses advanceChaosRound)
+      const isChaos = session.sessionType === SessionType.TOURNAMENT_CHAOS;
       const bracketMatches = newState.matches.filter(m => !m.id.startsWith('pool_match_'));
-      const allCompleted = bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
+      const allCompleted = !isChaos && bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
       
       useStore.getState().updateSession(session.id, {
         tournamentState: {
           ...newState,
-          phase: allCompleted ? 'COMPLETED' : newState.phase
+          phase: isChaos ? 'BRACKET' : (allCompleted ? 'COMPLETED' : newState.phase)
         }
       });
     }
@@ -397,6 +398,16 @@ export default function TournamentPanel() {
     }
   };
 
+  const handleSaveChaosScore = (matchId: string) => {
+    if (session && state) {
+      const match = state.matches.find(m => m.id === matchId);
+      if (!match || scoreA === scoreB) return;
+      const winnerTeamId = scoreA > scoreB ? match.teamAId! : match.teamBId!;
+      handleAdvanceBracketMatch(matchId, winnerTeamId, scoreA, scoreB);
+      setScoringMatchId(null);
+    }
+  };
+
   const handleSwapPoolScores = () => {
     const s1 = scoreA;
     const s2 = scoreB;
@@ -404,7 +415,13 @@ export default function TournamentPanel() {
     setScoreB(s1);
   };
 
-  const handleOpenPoolScoring = (match: any) => {
+  const handleOpenPoolScoring = (match: TournamentMatch) => {
+    setScoringMatchId(match.id);
+    setScoreA(match.scoreA ?? 11);
+    setScoreB(match.scoreB ?? 9);
+  };
+
+  const handleOpenChaosScoring = (match: TournamentMatch) => {
     setScoringMatchId(match.id);
     setScoreA(match.scoreA ?? 11);
     setScoreB(match.scoreB ?? 9);
@@ -464,11 +481,300 @@ export default function TournamentPanel() {
   const maxRound = chaosMatches.length > 0 ? Math.max(...chaosMatches.map(m => m.round)) : 0;
   const currentRoundMatches = chaosMatches.filter(m => m.round === maxRound);
   const canAdvanceChaos = currentRoundMatches.length > 0 && currentRoundMatches.every(m => m.status === 'COMPLETED');
+  const chaosRounds = Array.from(new Set(chaosMatches.map(m => m.round))).sort((a, b) => b - a);
+  const round1Matches = chaosMatches.filter(m => m.round === 1);
+  const totalChaosTeams = round1Matches.reduce((count, m) => count + (m.teamAId ? 1 : 0) + (m.teamBId ? 1 : 0), 0);
+  const eliminatedChaosTeamsCount = chaosMatches.filter(m => m.status === 'COMPLETED' && m.teamAId && m.teamBId).length;
+  const remainingChaosTeamsCount = phase === 'COMPLETED' ? 1 : Math.max(1, totalChaosTeams - eliminatedChaosTeamsCount);
+
+  const lastCompletedChaosMatch = [...chaosMatches]
+    .filter(m => m.status === 'COMPLETED' && m.winnerTeamId)
+    .sort((a, b) => b.round - a.round || b.matchNumber - a.matchNumber)[0];
+  const chaosChampionId = lastCompletedChaosMatch?.winnerTeamId;
+  const chaosChampionName = chaosChampionId ? getTeamName(chaosChampionId) : null;
+  const chaosChampionPair = pairs.find(p => p.id === chaosChampionId);
+  const chaosChampionP1 = chaosChampionPair ? players.find(p => p.id === chaosChampionPair.player1Id) : null;
+  const chaosChampionP2 = chaosChampionPair ? players.find(p => p.id === chaosChampionPair.player2Id) : null;
 
   // ─── Tournament mode label ───
   const modeLabel = session?.sessionType === SessionType.TOURNAMENT_DOUBLES ? '🏆 The Grand Slam' 
     : session?.sessionType === SessionType.TOURNAMENT_SINGLE_ELIM ? '⚡ Knockout Sprint' 
     : '🌪️ Chaos Roulette';
+
+  // ─── Helper: Render Chaos round-by-round card layout ───
+  const renderChaosRoundView = (isReadOnly: boolean = false) => (
+    <div className="flex flex-col gap-6">
+      {/* Surviving / Eliminated Teams Info Bar */}
+      <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="px-3.5 py-1.5 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-black text-xs uppercase tracking-wider border border-indigo-200 dark:border-indigo-800/60">
+            {remainingChaosTeamsCount} {remainingChaosTeamsCount === 1 ? 'team' : 'teams'} remaining
+          </span>
+          <span className="px-3.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-black text-xs uppercase tracking-wider border border-rose-200 dark:border-rose-900/60">
+            {eliminatedChaosTeamsCount} {eliminatedChaosTeamsCount === 1 ? 'team' : 'teams'} eliminated
+          </span>
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+            Round {maxRound} • {chaosMatches.length} total matches
+          </span>
+        </div>
+
+        {!isReadOnly && canAdvanceChaos && (
+          <button
+            onClick={handleAdvanceChaosRound}
+            className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-md transition-all flex items-center gap-2 animate-pulse-soft"
+          >
+            <span>🌪️ Generate Next Chaos Round</span>
+            <ArrowRight size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Rounds in Descending Order (newest round at top) */}
+      {chaosRounds.map(roundNum => {
+        const roundMatches = chaosMatches.filter(m => m.round === roundNum);
+        const completedInRound = roundMatches.filter(m => m.status === 'COMPLETED').length;
+        const isCurrentRound = roundNum === maxRound;
+        const allRoundDone = roundMatches.length > 0 && roundMatches.every(m => m.status === 'COMPLETED');
+
+        return (
+          <div key={roundNum} className="flex flex-col gap-4">
+            {/* Round Header */}
+            <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200 dark:border-gray-800">
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  🌪️ Round {roundNum}
+                </h3>
+                {isCurrentRound && !isReadOnly && (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    Active Round
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                  {completedInRound} of {roundMatches.length} matches completed
+                </span>
+                <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
+                  allRoundDone 
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60' 
+                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                }`}>
+                  {allRoundDone ? '✓ Completed' : 'Pending'}
+                </span>
+              </div>
+            </div>
+
+            {/* Advance Notice Banner for Current Completed Round */}
+            {!isReadOnly && isCurrentRound && allRoundDone && (
+              <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-200">
+                    Round {roundNum} Matches Finished!
+                  </h4>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                    All matches have been scored. Generate the next Chaos round to re-pair surviving players!
+                  </p>
+                </div>
+                <button
+                  onClick={handleAdvanceChaosRound}
+                  className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-2 animate-pulse-soft"
+                >
+                  <span>🌪️ Generate Next Chaos Round</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Match Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {roundMatches.map(match => {
+                const isDone = match.status === 'COMPLETED';
+                const hasBye = !match.teamBId;
+                const isWinnerA = match.winnerTeamId === match.teamAId && isDone;
+                const isWinnerB = match.winnerTeamId === match.teamBId && isDone;
+
+                return (
+                  <div
+                    key={match.id}
+                    className={`p-5 rounded-2xl shadow-sm border transition-all ${
+                      isDone 
+                        ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800' 
+                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-indigo-400 dark:hover:border-indigo-600'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Match #{match.matchNumber} (Round {match.round})
+                      </span>
+                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
+                        isDone 
+                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60' 
+                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                      }`}>
+                        {isDone ? (hasBye ? '✓ Bye Advance' : '✓ Completed') : 'Pending'}
+                      </span>
+                    </div>
+
+                    {/* Team A Row */}
+                    <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl transition-all ${
+                      isWinnerA 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                        : 'text-gray-900 dark:text-gray-100 font-bold'
+                    }`}>
+                      <span className="truncate mr-2 flex items-center gap-2">
+                        {isWinnerA && <span className="text-emerald-500 font-black">🏆</span>}
+                        {getTeamName(match.teamAId)}
+                      </span>
+                      <span className="font-mono font-black text-xl">{match.scoreA ?? (hasBye ? 'W' : '-')}</span>
+                    </div>
+
+                    {/* Team B Row */}
+                    <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-all ${
+                      isWinnerB 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                        : 'text-gray-900 dark:text-gray-100 font-bold'
+                    }`}>
+                      <span className="truncate mr-2 flex items-center gap-2">
+                        {isWinnerB && <span className="text-emerald-500 font-black">🏆</span>}
+                        {hasBye ? <span className="text-gray-400 italic">BYE (Auto-advance)</span> : getTeamName(match.teamBId)}
+                      </span>
+                      <span className="font-mono font-black text-xl">{hasBye ? '-' : (match.scoreB ?? '-')}</span>
+                    </div>
+
+                    {/* Score Input Box or Action */}
+                    {!isReadOnly && !hasBye && (
+                      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                        {scoringMatchId === match.id ? (
+                          <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 animate-slide-up">
+                            <div className="flex items-center gap-2 justify-between flex-wrap">
+                              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                {isDone ? 'Edit Score' : 'Enter Score'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleSwapPoolScores}
+                                className="min-h-[44px] px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                              >
+                                <RefreshCw size={14} /> Swap Scores / Winner
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 items-center">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">
+                                  {getTeamName(match.teamAId)}
+                                </label>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreA(Math.max(0, scoreA - 1))}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="99"
+                                    value={scoreA}
+                                    onChange={e => setScoreA(parseInt(e.target.value) || 0)}
+                                    className="w-full h-11 min-h-[44px] text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl py-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreA(scoreA + 1)}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">
+                                  {getTeamName(match.teamBId)}
+                                </label>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreB(Math.max(0, scoreB - 1))}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="99"
+                                    value={scoreB}
+                                    onChange={e => setScoreB(parseInt(e.target.value) || 0)}
+                                    className="w-full h-11 min-h-[44px] text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl py-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreB(scoreB + 1)}
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {scoreA === scoreB ? (
+                              <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
+                            ) : (
+                              <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setScoringMatchId(null)}
+                                className="flex-1 min-h-[44px] py-2.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveChaosScore(match.id)}
+                                disabled={scoreA === scoreB}
+                                className="flex-1 min-h-[44px] py-2.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
+                              >
+                                {isDone ? 'Update Score' : 'Save Score'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : isDone ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChaosScoring(match)}
+                            className="w-full min-h-[44px] py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Edit3 size={14} /> Edit Score / Winner
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChaosScoring(match)}
+                            className="w-full min-h-[44px] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                          >
+                            Enter Score
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto text-gray-900 dark:text-gray-100 max-w-7xl mx-auto w-full">
@@ -746,75 +1052,126 @@ export default function TournamentPanel() {
       {/* ─── BRACKET Phase ─── */}
       {phase === 'BRACKET' && (
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-center flex-wrap gap-4">
-            <div>
-              <h3 className="text-2xl font-black">Bracket Phase</h3>
-              <p className="text-xs text-gray-500 font-semibold mt-0.5">
-                Click any match to score it, edit scores, or swap winners.
-              </p>
-            </div>
-            {session?.sessionType === SessionType.TOURNAMENT_CHAOS && canAdvanceChaos && (
-              <button onClick={handleAdvanceChaosRound} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md transition-all animate-pulse-soft">
-                🌪️ Generate Next Chaos Round
-              </button>
-            )}
-          </div>
+          {session?.sessionType === SessionType.TOURNAMENT_CHAOS ? (
+            <div className="flex flex-col gap-6">
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                  <h3 className="text-2xl font-black">Chaos Roulette Rounds</h3>
+                  <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                    Score matches to determine advancing players. Survivors re-pair after each round.
+                  </p>
+                </div>
+                {canAdvanceChaos && (
+                  <button
+                    onClick={handleAdvanceChaosRound}
+                    className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-md transition-all flex items-center gap-2 animate-pulse-soft"
+                  >
+                    <span>🌪️ Generate Next Chaos Round</span>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+              </div>
 
-          {/* Collapsible Pool Play Standings */}
-          {poolMatches.length > 0 && (
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowPoolStandingsInBracket(!showPoolStandingsInBracket)}
-                className="w-full px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Shield size={16} className="text-indigo-500" />
-                  <span className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest">
-                    Pool Play Standings ({completedPoolMatches.length} Matches Completed)
-                  </span>
+              {renderChaosRoundView(false)}
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                  <h3 className="text-2xl font-black">Bracket Phase</h3>
+                  <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                    Click any match to score it, edit scores, or swap winners.
+                  </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400">
-                  <span>{showPoolStandingsInBracket ? 'Hide Standings' : 'View Standings'}</span>
-                  {showPoolStandingsInBracket ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
-              </button>
-              {showPoolStandingsInBracket && (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {[...pairs].sort((a, b) => (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0) || (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0)).map((pair, idx) => (
-                    <div key={pair.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
-                          idx < 3 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                        }`}>
-                          {idx + 1}
-                        </span>
-                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
-                          {pair.name || getTeamName(pair.id)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-6 text-sm">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins ?? 0}W</span>
-                        <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored ?? 0} Pts</span>
-                        <span className={`font-mono font-bold text-xs ${(pair.poolPlayPointDiff ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : (pair.poolPlayPointDiff ?? 0) < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
-                          {(pair.poolPlayPointDiff ?? 0) > 0 ? '+' : ''}{pair.poolPlayPointDiff ?? 0}
-                        </span>
-                      </div>
+              </div>
+
+              {/* Collapsible Pool Play Standings */}
+              {poolMatches.length > 0 && (
+                <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowPoolStandingsInBracket(!showPoolStandingsInBracket)}
+                    className="w-full px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Shield size={16} className="text-indigo-500" />
+                      <span className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest">
+                        Pool Play Standings ({completedPoolMatches.length} Matches Completed)
+                      </span>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400">
+                      <span>{showPoolStandingsInBracket ? 'Hide Standings' : 'View Standings'}</span>
+                      {showPoolStandingsInBracket ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                  </button>
+                  {showPoolStandingsInBracket && (
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {[...pairs].sort((a, b) => (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0) || (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0)).map((pair, idx) => (
+                        <div key={pair.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
+                              idx < 3 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                              {pair.name || getTeamName(pair.id)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-6 text-sm">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins ?? 0}W</span>
+                            <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored ?? 0} Pts</span>
+                            <span className={`font-mono font-bold text-xs ${(pair.poolPlayPointDiff ?? 0) > 0 ? 'text-emerald-600 dark:text-emerald-400' : (pair.poolPlayPointDiff ?? 0) < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
+                              {(pair.poolPlayPointDiff ?? 0) > 0 ? '+' : ''}{pair.poolPlayPointDiff ?? 0}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
+              <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
+            </>
+          )}
         </div>
       )}
       
       {/* ─── COMPLETED Phase ─── */}
       {phase === 'COMPLETED' && (
-        <div className="flex flex-col gap-4">
-          <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
+        <div className="flex flex-col gap-6">
+          {session?.sessionType === SessionType.TOURNAMENT_CHAOS ? (
+            <div className="flex flex-col gap-6">
+              {/* Champion Showcase Banner */}
+              <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-500/40 dark:border-amber-500/50 rounded-3xl p-6 sm:p-8 text-center shadow-xl space-y-4 animate-slide-up">
+                <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-inner">
+                  <Trophy size={40} />
+                </div>
+                <div>
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                    🏆 Chaos Roulette Champion
+                  </span>
+                  <h3 className="text-2xl sm:text-4xl font-black text-gray-900 dark:text-gray-100 mt-1">
+                    {chaosChampionName || 'Tournament Winner'}
+                  </h3>
+                  {chaosChampionP1 && chaosChampionP2 && (
+                    <p className="text-sm sm:text-base font-bold text-gray-700 dark:text-gray-300 mt-1">
+                      {chaosChampionP1.name} & {chaosChampionP2.name}
+                    </p>
+                  )}
+                  <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-semibold mt-1">
+                    Survived all {maxRound} rounds and conquered the roulette wheel!
+                  </p>
+                </div>
+              </div>
+
+              {/* Read-only Chaos Rounds list */}
+              {renderChaosRoundView(true)}
+            </div>
+          ) : (
+            <BracketTree matches={mappedBracketMatches} onMatchClick={handleAdvanceBracketMatch} />
+          )}
         </div>
       )}
     </div>

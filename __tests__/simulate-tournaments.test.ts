@@ -93,13 +93,14 @@ function runSimulation(playerCount: number, mode: SessionType) {
   return state;
 }
 
-try {
-  const counts = [24, 36, 48];
-  for (const count of counts) {
-    runSimulation(count, SessionType.TOURNAMENT_DOUBLES);
-    runSimulation(count, SessionType.TOURNAMENT_SINGLE_ELIM);
-    runSimulation(count, SessionType.TOURNAMENT_CHAOS);
-  }
-} catch (error) {
-  console.error("SIMULATION ERROR:", error);
-}
+describe('Tournament Simulation', () => {
+  it('simulates tournaments without errors', () => {
+    const counts = [24, 36, 48];
+    for (const count of counts) {
+      runSimulation(count, SessionType.TOURNAMENT_DOUBLES);
+      runSimulation(count, SessionType.TOURNAMENT_SINGLE_ELIM);
+      runSimulation(count, SessionType.TOURNAMENT_CHAOS);
+    }
+  });
+});
+
