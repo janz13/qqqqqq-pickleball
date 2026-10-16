@@ -242,7 +242,10 @@ export default function HistoryPage() {
             score2: m.scoreB,
             winner: m.winnerTeamId === m.teamAId ? p1Name : (m.winnerTeamId === m.teamBId ? p2Name : null),
             isLosersBracket: m.isLosersBracket,
-            isGrandFinals: m.id.startsWith('gf_')
+            isGrandFinals: m.id.startsWith('gf_'),
+            isBestOf3: m.isBestOf3,
+            games: m.games,
+            is3rdPlaceMatch: m.is3rdPlaceMatch ?? m.id.startsWith('3rd_place_'),
           };
         })
     : [];

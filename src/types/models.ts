@@ -118,6 +118,7 @@ export interface TournamentMatch {
   scoreB: number | null;
   isBestOf3: boolean;
   games: { winnerId: string; scoreA: number; scoreB: number }[];
+  is3rdPlaceMatch?: boolean;
 }
 
 export interface TournamentState {

@@ -624,6 +624,37 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
     }
   }
 
+  // 3rd Place Match for Single Elimination (Knockout Sprint ONLY, not Chaos)
+  if (type === SessionType.TOURNAMENT_SINGLE_ELIM) {
+    const semiRound = matchNodes.find(round => round.length === 2);
+    if (semiRound) {
+      const thirdPlaceMatch: TournamentMatch = {
+        id: `3rd_place_m${matchCounter}`,
+        round: numRounds,
+        isLosersBracket: false,
+        matchNumber: matchCounter,
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: null,
+        teamBId: null,
+        courtId: null,
+        status: 'PENDING',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: true,
+        games: [],
+        is3rdPlaceMatch: true
+      };
+      matchCounter++;
+      semiRound[0].nextLoserMatchId = thirdPlaceMatch.id;
+      semiRound[1].nextLoserMatchId = thirdPlaceMatch.id;
+      matches.push(thirdPlaceMatch);
+    }
+  }
+
   // Populate first round
   for (let i = 0; i < matchNodes[0].length; i++) {
     const seedA = seeding[i * 2];
@@ -835,11 +866,10 @@ export function advanceMatchWinner(
   }
 
   // ─── Tournament Completion Detection ───
-  // If this match has no nextMatchId (it's the final), tournament is done
+  // If this match has no nextMatchId (it's the final or 3rd place match), tournament is done
   // (NOT for Chaos Roulette — Chaos round advancement and completion are managed by advanceChaosRound)
   if (!match.nextMatchId && !match.nextLoserMatchId && !match.id.startsWith('chaos_')) {
-    // Single elimination final
-    const allBracketMatches = updatedMatches.filter(m => !m.id.startsWith('pool_match_'));
+    const allBracketMatches = updatedMatches.filter(m => !m.id.startsWith('pool_match_') && !m.id.startsWith('chaos_'));
     const allDone = allBracketMatches.every(m => m.status === 'COMPLETED');
     if (allDone && allBracketMatches.length > 0) {
       return { ...state, matches: updatedMatches, phase: 'COMPLETED' };

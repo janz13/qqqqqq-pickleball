@@ -102,5 +102,95 @@ describe('Tournament Simulation', () => {
       runSimulation(count, SessionType.TOURNAMENT_CHAOS);
     }
   });
+
+  it('generates 3rd place match for Single Elimination (Knockout Sprint) with proper links', () => {
+    const players: Player[] = [];
+    for (let i = 1; i <= 8; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    let state = initializeTournament(players, SessionType.TOURNAMENT_SINGLE_ELIM);
+    expect(state.phase).toBe('BRACKET');
+
+    const thirdPlaceMatch = state.matches.find(m => m.is3rdPlaceMatch);
+    expect(thirdPlaceMatch).toBeDefined();
+    expect(thirdPlaceMatch!.id).toMatch(/^3rd_place_/);
+    expect(thirdPlaceMatch!.isBestOf3).toBe(true);
+    expect(thirdPlaceMatch!.nextMatchId).toBeNull();
+
+    // Check semifinal matches have nextLoserMatchId pointing to 3rd place match
+    const semiMatches = state.matches.filter(m => m.nextLoserMatchId === thirdPlaceMatch!.id);
+    expect(semiMatches.length).toBe(2);
+
+    // Play semifinal 1
+    const semi1 = semiMatches[0];
+    state = advanceMatchWinner(state, semi1.id, semi1.teamAId!);
+    let updated3rd = state.matches.find(m => m.id === thirdPlaceMatch!.id)!;
+    expect(updated3rd.teamAId).toBe(semi1.teamBId);
+    expect(updated3rd.status).toBe('PENDING');
+
+    // Play semifinal 2
+    const semi2 = semiMatches[1];
+    state = advanceMatchWinner(state, semi2.id, semi2.teamAId!);
+    updated3rd = state.matches.find(m => m.id === thirdPlaceMatch!.id)!;
+    expect(updated3rd.teamBId).toBe(semi2.teamBId);
+    expect(updated3rd.status).toBe('READY');
+
+    // Finals match
+    const finalsMatch = state.matches.find(m => m.round === updated3rd.round && !m.is3rdPlaceMatch)!;
+    expect(finalsMatch).toBeDefined();
+
+    // Complete finals first
+    state = advanceMatchWinner(state, finalsMatch.id, finalsMatch.teamAId!);
+    expect(state.phase).toBe('BRACKET'); // Not completed yet because 3rd place is pending!
+
+    // Complete 3rd place match
+    state = advanceMatchWinner(state, updated3rd.id, updated3rd.teamAId!);
+    expect(state.phase).toBe('COMPLETED'); // Both finished -> COMPLETED
+  });
+
+  it('handles Best of 3 game progression correctly', () => {
+    const players: Player[] = [];
+    for (let i = 1; i <= 8; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    let state = initializeTournament(players, SessionType.TOURNAMENT_SINGLE_ELIM);
+    const semiMatch = state.matches.find(m => m.round === 1 && m.isBestOf3)!;
+    expect(semiMatch).toBeDefined();
+    const teamA = semiMatch.teamAId!;
+    const teamB = semiMatch.teamBId!;
+
+    // Game 1: Team A wins (11-9)
+    state = advanceMatchWinner(state, semiMatch.id, teamA, 11, 9);
+    let m = state.matches.find(x => x.id === semiMatch.id)!;
+    expect(m.status).toBe('IN_PROGRESS');
+    expect(m.games.length).toBe(1);
+    expect(m.games[0]).toEqual({ winnerId: teamA, scoreA: 11, scoreB: 9 });
+
+    // Game 2: Team B wins (8-11)
+    state = advanceMatchWinner(state, semiMatch.id, teamB, 8, 11);
+    m = state.matches.find(x => x.id === semiMatch.id)!;
+    expect(m.status).toBe('IN_PROGRESS');
+    expect(m.games.length).toBe(2);
+
+    // Game 3: Team A wins (11-7) -> Series decided 2-1
+    state = advanceMatchWinner(state, semiMatch.id, teamA, 11, 7);
+    m = state.matches.find(x => x.id === semiMatch.id)!;
+    expect(m.status).toBe('COMPLETED');
+    expect(m.winnerTeamId).toBe(teamA);
+    expect(m.games.length).toBe(3);
+  });
+
+  it('does NOT create a 3rd place match for Chaos Roulette', () => {
+    const players: Player[] = [];
+    for (let i = 1; i <= 8; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    const state = initializeTournament(players, SessionType.TOURNAMENT_CHAOS);
+    const thirdPlaceMatch = state.matches.find(m => m.is3rdPlaceMatch);
+    expect(thirdPlaceMatch).toBeUndefined();
+  });
 });
 

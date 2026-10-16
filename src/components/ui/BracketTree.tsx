@@ -17,6 +17,9 @@ export interface TournamentMatch {
   winner?: string | null;
   isLosersBracket?: boolean;
   isGrandFinals?: boolean;
+  isBestOf3?: boolean;
+  games?: { winnerId: string; scoreA: number; scoreB: number }[];
+  is3rdPlaceMatch?: boolean;
 }
 
 export interface TournamentPair {
@@ -117,11 +120,12 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   const [modalScore1, setModalScore1] = useState(11);
   const [modalScore2, setModalScore2] = useState(9);
 
-  // Separate matches into Upper Bracket, Lower Bracket, and Grand Finals
-  const upperMatches = matches.filter(m => !m.isLosersBracket && !m.isGrandFinals);
+  // Separate matches into Upper Bracket, Lower Bracket, Grand Finals, and 3rd Place Match
+  const upperMatches = matches.filter(m => !m.isLosersBracket && !m.isGrandFinals && !m.is3rdPlaceMatch);
   const lowerMatches = matches.filter(m => !!m.isLosersBracket);
   const finalsMatches = matches.filter(m => !!m.isGrandFinals);
   const grandFinalMatch = finalsMatches[0] || matches[matches.length - 1];
+  const thirdPlaceMatch = matches.find(m => !!m.is3rdPlaceMatch);
 
   // Group Upper Bracket by round
   const upperRounds = upperMatches.reduce((acc, match) => {
@@ -181,19 +185,13 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   } else {
     // Single Elimination
     const maxRound = Math.max(0, ...matches.map(m => m.round));
-    const finalsMatch = matches.find(m => m.round === maxRound);
+    const finalsMatch = matches.find(m => m.round === maxRound && !m.is3rdPlaceMatch);
     if (finalsMatch && finalsMatch.winner) {
       champion = finalsMatch.winner;
       secondPlace = finalsMatch.winner === finalsMatch.player1 ? finalsMatch.player2 ?? null : finalsMatch.player1 ?? null;
-      const semisMatches = matches.filter(m => m.round === maxRound - 1);
-      if (semisMatches.length === 2 && semisMatches.every(m => m.winner)) {
-        const losers = semisMatches.map(m => (m.winner === m.player1 ? m.player2 : m.player1)).filter(Boolean) as string[];
-        if (losers.length === 2) {
-          thirdPlace = 'T-3rd: ' + losers.join(' & ');
-        } else if (losers.length === 1) {
-          thirdPlace = losers[0] ?? null;
-        }
-      }
+    }
+    if (thirdPlaceMatch && thirdPlaceMatch.winner) {
+      thirdPlace = thirdPlaceMatch.winner;
     }
   }
 
@@ -227,6 +225,10 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     const isP2Winner = match.winner === match.player2 && hasWinner;
     const isPlayable = !!match.player1 && !!match.player2;
 
+    const gamesPlayed = match.games?.length ?? 0;
+    const p1GameWins = match.games?.filter(g => g.winnerId === match.player1Id).length ?? 0;
+    const p2GameWins = match.games?.filter(g => g.winnerId === match.player2Id).length ?? 0;
+
     return (
       <div key={match.id} className="relative flex items-center h-full">
         <div
@@ -254,12 +256,21 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               {bracketType === 'lower' && <Flame size={11} className="text-amber-500" />}
               {bracketType === 'final' && <Crown size={11} className="text-emerald-500" />}
               Match #{match.position}
+              {match.isBestOf3 && (
+                <span className="text-[9px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-black uppercase">
+                  ⚔️ Bo3
+                </span>
+              )}
             </span>
-            {bracketType === 'upper' && (
+            {match.is3rdPlaceMatch ? (
+              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                3rd Place
+              </span>
+            ) : bracketType === 'upper' && hasDoubleElim ? (
               <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
                 <ArrowDown size={10} /> To LB
               </span>
-            )}
+            ) : null}
             {bracketType === 'lower' && (
               <span className="text-[9px] text-rose-500 font-semibold">
                 Elimination
@@ -271,6 +282,13 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               </span>
             )}
           </div>
+
+          {/* Best-of-3 Series Standing */}
+          {match.isBestOf3 && gamesPlayed > 0 && (
+            <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/30 text-[10px] font-black text-center text-indigo-700 dark:text-indigo-300 border-b border-gray-100 dark:border-gray-800">
+              Series: {p1GameWins}-{p2GameWins}
+            </div>
+          )}
 
           {/* Opponent 1 Row */}
           <div
@@ -491,6 +509,18 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                               </React.Fragment>
                             );
                           })}
+
+                          {/* 3rd Place Match — beside the Finals */}
+                          {!hasDoubleElim && thirdPlaceMatch && (
+                            <div className="flex flex-col justify-end min-w-[270px] relative ml-6">
+                              <h3 className="text-center text-xs font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-4">
+                                🥉 3rd Place Match
+                              </h3>
+                              <div className="bg-gradient-to-b from-amber-50/50 to-transparent dark:from-amber-950/20 p-2 rounded-2xl border border-amber-300/40 dark:border-amber-800/40">
+                                {renderLiquipediaMatchCard(thirdPlaceMatch, 'upper')}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

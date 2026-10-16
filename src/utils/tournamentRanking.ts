@@ -135,10 +135,15 @@ export function rankTournament(
   if (resolvedType === SessionType.TOURNAMENT_SINGLE_ELIM) {
     const bracketMatches = matches.filter(m => !m.id.startsWith('pool_'));
     const maxRound = bracketMatches.length > 0 ? Math.max(...bracketMatches.map(m => m.round)) : 0;
-    const finalsMatch = bracketMatches.find(m => m.round === maxRound);
+    const finalsMatch = bracketMatches.find(m => m.round === maxRound && !m.id.startsWith('3rd_place_') && !m.is3rdPlaceMatch);
     const championId = finalsMatch?.winnerTeamId;
     const runnerUpId = finalsMatch && championId 
       ? (finalsMatch.winnerTeamId === finalsMatch.teamAId ? finalsMatch.teamBId : finalsMatch.teamAId) 
+      : null;
+    const thirdPlaceMatch = bracketMatches.find(m => m.is3rdPlaceMatch || m.id.startsWith('3rd_place_'));
+    const thirdPlaceId = thirdPlaceMatch?.winnerTeamId;
+    const fourthPlaceId = thirdPlaceMatch && thirdPlaceId
+      ? (thirdPlaceMatch.winnerTeamId === thirdPlaceMatch.teamAId ? thirdPlaceMatch.teamBId : thirdPlaceMatch.teamAId)
       : null;
 
     const scoredPairs = pairs.map(pair => {
@@ -150,6 +155,8 @@ export function rankTournament(
       let tier = 0;
       if (pair.id === championId) tier = 100;
       else if (pair.id === runnerUpId) tier = 90;
+      else if (pair.id === thirdPlaceId) tier = 80;
+      else if (pair.id === fourthPlaceId) tier = 70;
       else tier = maxRoundPlayed * 10 + wins;
 
       return {
@@ -181,7 +188,7 @@ export function rankTournament(
         pointsScored: 0,
         pointDiff: 0,
         detail: `${item.wins} Bracket ${item.wins === 1 ? 'Win' : 'Wins'}`,
-        subDetail: item.tier === 100 ? 'Champion' : item.tier === 90 ? 'Runner-up' : `R${item.maxRoundPlayed}`,
+        subDetail: item.tier === 100 ? 'Champion' : item.tier === 90 ? 'Runner-up' : item.tier === 80 ? '3rd Place' : item.tier === 70 ? '4th Place' : `R${item.maxRoundPlayed}`,
         isPlayer: false,
         pair: item.pair,
         player1: p1,
