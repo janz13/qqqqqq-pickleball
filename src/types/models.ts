@@ -125,6 +125,12 @@ export interface TournamentState {
   pairs: TournamentPair[];
   matches: TournamentMatch[];
   phase: 'REGISTRATION' | 'POOL_PLAY' | 'BRACKET' | 'COMPLETED';
+  /** Maximum number of pool play rounds before bracket generation */
+  maxPoolRounds?: number;
+  /** Current pool play round number (tracked as matches are generated) */
+  currentPoolRound?: number;
+  /** Whether tiebreaker matches are pending at the UB/LB cutline */
+  tiebreakerPhase?: boolean;
 }
 
 export interface Session {

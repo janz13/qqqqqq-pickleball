@@ -1,5 +1,5 @@
 import { Player, SessionType, TournamentState, createPlayer } from '../src/types/models';
-import { initializeTournament, buildPoolPlayRound, generateBracket, advanceMatchWinner, advanceChaosRound } from '../src/engine/tournament-engine';
+import { initializeTournament, buildPoolPlayRound, generateBracket, advanceMatchWinner, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches } from '../src/engine/tournament-engine';
 
 function runSimulation(playerCount: number, mode: SessionType) {
   console.log(`\n===========================================`);
@@ -191,6 +191,88 @@ describe('Tournament Simulation', () => {
     const state = initializeTournament(players, SessionType.TOURNAMENT_CHAOS);
     const thirdPlaceMatch = state.matches.find(m => m.is3rdPlaceMatch);
     expect(thirdPlaceMatch).toBeUndefined();
+  });
+
+  it('correctly implements Grand Slam UB/LB split seeding', () => {
+    // 16 players = 8 pairs
+    const players: Player[] = [];
+    for (let i = 1; i <= 16; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    let state = initializeTournament(players, SessionType.TOURNAMENT_DOUBLES);
+    expect(state.pairs.length).toBe(8);
+
+    // Set up clear standings: Pairs 1..4 have high wins (UB), Pairs 5..8 have low wins (LB)
+    state.pairs = state.pairs.map((pair, idx) => ({
+      ...pair,
+      poolPlayWins: 8 - idx,
+      poolPlayPointDiff: (8 - idx) * 5,
+      poolPlayPointsScored: (8 - idx) * 11
+    }));
+
+    // Transition to bracket
+    state = generateBracket(state, SessionType.TOURNAMENT_DOUBLES);
+    expect(state.phase).toBe('BRACKET');
+
+    const top4PairIds = state.pairs.slice(0, 4).map(p => p.id);
+    const bottom4PairIds = state.pairs.slice(4).map(p => p.id);
+
+    // Check WB Round 1 matches contain only UB teams (top 4)
+    const wbR1Matches = state.matches.filter(m => m.id.startsWith('wb_r1_'));
+    expect(wbR1Matches.length).toBe(2);
+    for (const m of wbR1Matches) {
+      expect(m.isLosersBracket).toBe(false);
+      expect(m.nextLoserMatchId).not.toBeNull(); // Double elim advantage: drop on loss
+      if (m.teamAId) expect(top4PairIds).toContain(m.teamAId);
+      if (m.teamBId) expect(top4PairIds).toContain(m.teamBId);
+    }
+
+    // Check LB Direct Round 1 matches contain only LB teams (bottom 4)
+    const lbDirectMatches = state.matches.filter(m => m.id.startsWith('lb_r1_'));
+    expect(lbDirectMatches.length).toBe(2);
+    for (const m of lbDirectMatches) {
+      expect(m.isLosersBracket).toBe(true);
+      expect(m.nextLoserMatchId).toBeNull(); // LB direct teams have single elimination
+      if (m.teamAId) expect(bottom4PairIds).toContain(m.teamAId);
+      if (m.teamBId) expect(bottom4PairIds).toContain(m.teamBId);
+    }
+  });
+
+  it('detects ties at the UB/LB cutline and generates tiebreaker matches', () => {
+    // 8 pairs (cutline is between pair 4 and pair 5)
+    const pairs = Array.from({ length: 8 }, (_, i) => ({
+      id: `pair_${i + 1}`,
+      player1Id: `p${i * 2 + 1}`,
+      player2Id: `p${i * 2 + 2}`,
+      name: `Team ${i + 1}`,
+      seed: i + 1,
+      poolPlayWins: i < 3 ? 3 : (i === 3 || i === 4 ? 2 : 1), // pair 4 & 5 tied at 2 wins
+      poolPlayPointDiff: i < 3 ? 10 : (i === 3 || i === 4 ? 4 : 0), // pair 4 & 5 tied at +4 diff
+      poolPlayPointsScored: i < 3 ? 33 : (i === 3 || i === 4 ? 28 : 20) // pair 4 & 5 tied at 28 pts
+    }));
+
+    const state: TournamentState = {
+      pairs,
+      matches: [],
+      phase: 'POOL_PLAY',
+      maxPoolRounds: 3,
+      currentPoolRound: 3
+    };
+
+    // Cutline is at index 3 (4th team) vs index 4 (5th team)
+    const { needsTiebreaker, tiedPairIds } = checkPoolTiebreakers(state);
+    expect(needsTiebreaker).toBe(true);
+    expect(tiedPairIds).toContain('pair_4');
+    expect(tiedPairIds).toContain('pair_5');
+
+    // Build tiebreaker matches
+    const tiebreakerMatches = buildTiebreakerMatches(state, tiedPairIds);
+    expect(tiebreakerMatches.length).toBe(1);
+    expect(tiebreakerMatches[0].id).toMatch(/^pool_tiebreaker_/);
+    expect(tiebreakerMatches[0].status).toBe('READY');
+    expect(tiebreakerMatches[0].teamAId).toBe('pair_4');
+    expect(tiebreakerMatches[0].teamBId).toBe('pair_5');
   });
 });
 

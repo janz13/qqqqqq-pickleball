@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
 import { SessionType, TournamentPair, Player, TournamentMatch } from '@/types/models';
 import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
-import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound } from '@/engine/tournament-engine';
+import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches } from '@/engine/tournament-engine';
 
 export default function TournamentPanel() {
   const { session, players } = useStore();
@@ -16,6 +16,7 @@ export default function TournamentPanel() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isEditingPairs, setIsEditingPairs] = useState(false);
   const [showPoolStandingsInBracket, setShowPoolStandingsInBracket] = useState(false);
+  const [selectedPoolRounds, setSelectedPoolRounds] = useState(3);
 
   // Pair Builder State
   const [draftPairs, setDraftPairs] = useState<TournamentPair[]>([]);
@@ -150,13 +151,26 @@ export default function TournamentPanel() {
           ...state,
           pairs: newPairs,
           matches: newPoolMatches,
-          phase: 'POOL_PLAY'
+          phase: 'POOL_PLAY',
+          currentPoolRound: 1,
+          maxPoolRounds: selectedPoolRounds
         }
       });
       setIsEditingPairs(false);
       return;
     }
+    // Store the maxPoolRounds in the tournament state after initialization
     useStore.getState().startTournament('CUSTOM', draftPairs);
+    // Patch in maxPoolRounds after tournament is initialized
+    const currentSession = useStore.getState().session;
+    if (currentSession?.tournamentState && currentSession.sessionType === SessionType.TOURNAMENT_DOUBLES) {
+      useStore.getState().updateSession(currentSession.id, {
+        tournamentState: {
+          ...currentSession.tournamentState,
+          maxPoolRounds: selectedPoolRounds
+        }
+      });
+    }
     setIsEditingPairs(false);
   };
 
@@ -318,6 +332,35 @@ export default function TournamentPanel() {
           )}
         </div>
 
+        {/* Pool Rounds Selector (Grand Slam only) */}
+        {isDoubles && (
+          <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+            <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-2 mb-3">
+              🏊 Pool Play Rounds
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              How many rounds of pool play before transitioning to the elimination bracket?
+            </p>
+            <div className="flex items-center gap-3">
+              {[2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSelectedPoolRounds(n)}
+                  className={`min-w-[52px] min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-black transition-all ${
+                    selectedPoolRounds === n
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+              <span className="text-xs font-bold text-gray-400 ml-1">rounds</span>
+            </div>
+          </div>
+        )}
+
         {/* Start Button */}
         <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
           <button
@@ -325,7 +368,7 @@ export default function TournamentPanel() {
             disabled={draftPairs.length < 2}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-black text-lg shadow-xl shadow-emerald-600/20 transition-all flex items-center justify-center gap-3"
           >
-            <span>{isDoubles ? 'Start Pool Play with these Teams' : 'Generate Tournament with these Teams'}</span>
+            <span>{isDoubles ? `Start ${selectedPoolRounds}-Round Pool Play with these Teams` : 'Generate Tournament with these Teams'}</span>
             <ArrowRight size={20} />
           </button>
         </div>
@@ -351,11 +394,13 @@ export default function TournamentPanel() {
   const handleStartPoolPlay = () => {
     if (session && state) {
       const newPoolMatches = buildPoolPlayRound(state, 4);
+      const roundNum = newPoolMatches[0]?.round ?? ((state.currentPoolRound ?? 0) + 1);
       useStore.getState().updateSession(session.id, {
         tournamentState: {
           ...state,
           matches: [...state.matches, ...newPoolMatches],
-          phase: 'POOL_PLAY'
+          phase: 'POOL_PLAY',
+          currentPoolRound: roundNum
         }
       });
     }
@@ -363,10 +408,49 @@ export default function TournamentPanel() {
 
   const handleGenerateBracket = () => {
     if (session && state) {
+      // Check for tiebreakers at the UB/LB cutline before generating bracket
+      const { needsTiebreaker, tiedPairIds } = checkPoolTiebreakers(state);
+      if (needsTiebreaker && !state.tiebreakerPhase) {
+        // Generate tiebreaker matches instead of bracket
+        const tbMatches = buildTiebreakerMatches(state, tiedPairIds);
+        useStore.getState().updateSession(session.id, {
+          tournamentState: {
+            ...state,
+            matches: [...state.matches, ...tbMatches],
+            tiebreakerPhase: true
+          }
+        });
+        return;
+      }
       const newState = generateBracket(state, session.sessionType!);
       useStore.getState().updateSession(session.id, {
         tournamentState: newState
       });
+    }
+  };
+
+  const handleSaveTiebreakerScore = (matchId: string) => {
+    if (session && state && scoreA !== scoreB) {
+      const newState = updatePoolMatchScore(state, matchId, scoreA, scoreB);
+      // Check if all tiebreaker matches are now completed
+      const tbMatches = newState.matches.filter(m => m.id.startsWith('pool_tiebreaker_'));
+      const allTbDone = tbMatches.length > 0 && tbMatches.every(m => m.status === 'COMPLETED');
+      
+      if (allTbDone) {
+        // All tiebreakers resolved — now generate the bracket
+        const bracketState = generateBracket(
+          { ...newState, tiebreakerPhase: false },
+          session.sessionType!
+        );
+        useStore.getState().updateSession(session.id, {
+          tournamentState: bracketState
+        });
+      } else {
+        useStore.getState().updateSession(session.id, {
+          tournamentState: newState
+        });
+      }
+      setScoringMatchId(null);
     }
   };
 
@@ -446,7 +530,7 @@ export default function TournamentPanel() {
 
   // ─── Mapped bracket data for BracketTree ───
   const mappedBracketMatches = matches
-    .filter(m => !m.id.startsWith('pool_match_'))
+    .filter(m => !m.id.startsWith('pool_match_') && !m.id.startsWith('pool_tiebreaker_'))
     .map(m => {
       const p1Name = getTeamName(m.teamAId);
       const p2Name = getTeamName(m.teamBId);
@@ -475,12 +559,19 @@ export default function TournamentPanel() {
 
   // ─── Pool play status ───
   const poolMatches = matches.filter(m => m.id.startsWith('pool_match_'));
+  const tiebreakerMatches = matches.filter(m => m.id.startsWith('pool_tiebreaker_'));
   const completedPoolMatches = poolMatches.filter(m => m.status === 'COMPLETED');
   const pendingPoolMatches = poolMatches.filter(m => m.status !== 'COMPLETED');
   const allPoolDone = poolMatches.length > 0 && pendingPoolMatches.length === 0;
+  const currentPoolRound = state?.currentPoolRound ?? (poolMatches.length > 0 ? Math.max(...poolMatches.map(m => m.round)) : 0);
+  const maxPoolRounds = state?.maxPoolRounds ?? 0;
+  const reachedMaxRounds = maxPoolRounds > 0 && currentPoolRound >= maxPoolRounds;
+  const canAddMoreRounds = allPoolDone && !reachedMaxRounds;
+  const allTiebreakersDone = tiebreakerMatches.length > 0 && tiebreakerMatches.every(m => m.status === 'COMPLETED');
+  const inTiebreakerPhase = state?.tiebreakerPhase === true;
 
   // ─── Chaos status ───
-  const chaosMatches = matches.filter(m => !m.id.startsWith('pool_match_'));
+  const chaosMatches = matches.filter(m => !m.id.startsWith('pool_match_') && !m.id.startsWith('pool_tiebreaker_'));
   const maxRound = chaosMatches.length > 0 ? Math.max(...chaosMatches.map(m => m.round)) : 0;
   const currentRoundMatches = chaosMatches.filter(m => m.round === maxRound);
   const canAdvanceChaos = currentRoundMatches.length > 0 && currentRoundMatches.every(m => m.status === 'COMPLETED');
@@ -843,16 +934,19 @@ export default function TournamentPanel() {
               <h3 className="text-2xl font-black">Pool Play Matches</h3>
               <p className="text-xs text-gray-500 font-semibold mt-0.5">
                 {completedPoolMatches.length} of {poolMatches.length} matches completed
+                {maxPoolRounds > 0 && ` • Round ${currentPoolRound} of ${maxPoolRounds}`}
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              {pendingPoolMatches.length === 0 && poolMatches.length > 0 && (
-                <button onClick={handleStartPoolPlay} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Next Pool Round button — hidden when max rounds reached or tiebreaker phase */}
+              {canAddMoreRounds && !inTiebreakerPhase && (
+                <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
                   Next Pool Round →
                 </button>
               )}
-              {allPoolDone && (
-                <button onClick={handleGenerateBracket} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all animate-pulse-soft flex items-center gap-2">
+              {/* Generate Bracket button — show when reached max rounds OR manually when all done */}
+              {allPoolDone && (reachedMaxRounds || !maxPoolRounds) && !inTiebreakerPhase && (
+                <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all animate-pulse-soft flex items-center gap-2">
                   <span>🏟️ Generate Double Elimination Bracket</span>
                   <ArrowRight size={16} />
                 </button>
@@ -860,40 +954,189 @@ export default function TournamentPanel() {
             </div>
           </div>
 
+          {/* Pool rounds reached banner */}
+          {allPoolDone && reachedMaxRounds && !inTiebreakerPhase && (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
+              <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                ✅ All {maxPoolRounds} Pool Play Rounds Complete!
+              </h4>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium mt-1">
+                Pool play is done. Generate the bracket to begin the elimination phase. Top half will enter the Upper Bracket with double-elimination advantage, bottom half enters Lower Bracket directly.
+              </p>
+            </div>
+          )}
+
+          {/* Tiebreaker Phase Banner & Matches */}
+          {inTiebreakerPhase && (
+            <div className="flex flex-col gap-4">
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 animate-slide-up">
+                <h4 className="text-sm font-black text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                  ⚖️ Tiebreaker Matches Required!
+                </h4>
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-medium mt-1">
+                  Teams are tied at the Upper/Lower bracket cutline. These tiebreaker matches must be completed to determine bracket placement.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tiebreakerMatches.map(match => {
+                  const isDone = match.status === 'COMPLETED';
+                  const isWinnerA = match.winnerTeamId === match.teamAId && isDone;
+                  const isWinnerB = match.winnerTeamId === match.teamBId && isDone;
+                  return (
+                    <div key={match.id} className={`p-5 rounded-2xl shadow-sm border-2 transition-all ${
+                      isDone 
+                        ? 'bg-white dark:bg-gray-900 border-emerald-200 dark:border-emerald-800' 
+                        : 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700'
+                    }`}>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          ⚖️ Tiebreaker
+                        </span>
+                        <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
+                          isDone 
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60' 
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                        }`}>
+                          {isDone ? '✓ Decided' : 'Must Play'}
+                        </span>
+                      </div>
+                      <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl transition-all ${
+                        isWinnerA 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                          : 'text-gray-900 dark:text-gray-100 font-bold'
+                      }`}>
+                        <span className="truncate mr-2 flex items-center gap-2">
+                          {isWinnerA && <span className="text-emerald-500 font-black">↑ UB</span>}
+                          {getTeamName(match.teamAId)}
+                        </span>
+                        <span className="font-mono font-black text-xl">{match.scoreA ?? '-'}</span>
+                      </div>
+                      <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-all ${
+                        isWinnerB 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
+                          : 'text-gray-900 dark:text-gray-100 font-bold'
+                      }`}>
+                        <span className="truncate mr-2 flex items-center gap-2">
+                          {isWinnerB && <span className="text-emerald-500 font-black">↑ UB</span>}
+                          {getTeamName(match.teamBId)}
+                        </span>
+                        <span className="font-mono font-black text-xl">{match.scoreB ?? '-'}</span>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                        {scoringMatchId === match.id ? (
+                          <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 animate-slide-up">
+                            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              {isDone ? 'Edit Score' : 'Enter Score'}
+                            </span>
+                            <div className="grid grid-cols-2 gap-3 items-center">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">{getTeamName(match.teamAId)}</label>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                                  <input type="number" min="0" max="99" value={scoreA} onChange={e => setScoreA(parseInt(e.target.value) || 0)} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
+                                  <button onClick={() => setScoreA(scoreA + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">{getTeamName(match.teamBId)}</label>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                                  <input type="number" min="0" max="99" value={scoreB} onChange={e => setScoreB(parseInt(e.target.value) || 0)} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
+                                  <button onClick={() => setScoreB(scoreB + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                                </div>
+                              </div>
+                            </div>
+                            {scoreA === scoreB ? (
+                              <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
+                            ) : (
+                              <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                Winner (→ UB): {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <button onClick={() => setScoringMatchId(null)} className="flex-1 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button>
+                              <button onClick={() => handleSaveTiebreakerScore(match.id)} disabled={scoreA === scoreB} className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all">
+                                {isDone ? 'Update Score' : 'Save Score'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenPoolScoring(match)}
+                            className={`w-full py-3 rounded-xl text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 ${
+                              isDone 
+                                ? 'border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider' 
+                                : 'bg-amber-600 hover:bg-amber-700 text-white'
+                            }`}
+                          >
+                            {isDone ? <><Edit3 size={14} /> Edit Score</> : 'Enter Tiebreaker Score'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Pool Standings */}
-          {poolMatches.length > 0 && (
+          {poolMatches.length > 0 && (() => {
+            const sortedStandings = [...pairs].sort((a, b) => b.poolPlayWins - a.poolPlayWins || b.poolPlayPointDiff - a.poolPlayPointDiff || b.poolPlayPointsScored - a.poolPlayPointsScored);
+            const cutline = Math.ceil(sortedStandings.length / 2);
+            return (
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
               <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
                 <h4 className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-2">
                   <Shield size={14} className="text-indigo-500" /> Pool Standings
                 </h4>
-                <span className="text-xs text-gray-400 font-medium">Top seeds advance to Winners Bracket</span>
+                <span className="text-xs text-gray-400 font-medium">Top {cutline} → Upper Bracket • Bottom {sortedStandings.length - cutline} → Lower Bracket</span>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {[...pairs].sort((a, b) => b.poolPlayWins - a.poolPlayWins || b.poolPlayPointDiff - a.poolPlayPointDiff).map((pair, idx) => (
-                  <div key={pair.id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
-                        idx < 3 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                      }`}>
-                        {idx + 1}
-                      </span>
-                      <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
-                        {pair.name || getTeamName(pair.id)}
-                      </span>
+                {sortedStandings.map((pair, idx) => (
+                  <React.Fragment key={pair.id}>
+                    {/* UB/LB Cutline divider */}
+                    {idx === cutline && (
+                      <div className="px-5 py-2 bg-gradient-to-r from-rose-50 via-rose-100 to-rose-50 dark:from-rose-950/40 dark:via-rose-950/60 dark:to-rose-950/40 flex items-center gap-2">
+                        <div className="flex-1 h-px bg-rose-300 dark:bg-rose-700" />
+                        <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest whitespace-nowrap">
+                          ↓ Lower Bracket Cutline ↓
+                        </span>
+                        <div className="flex-1 h-px bg-rose-300 dark:bg-rose-700" />
+                      </div>
+                    )}
+                    <div className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black ${
+                          idx < cutline ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                          {pair.name || getTeamName(pair.id)}
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider ${
+                          idx < cutline 
+                            ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                            : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40'
+                        }`}>
+                          {idx < cutline ? 'UB' : 'LB'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins}W</span>
+                        <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored} Pts</span>
+                        <span className={`font-mono font-bold text-xs ${pair.poolPlayPointDiff > 0 ? 'text-emerald-600 dark:text-emerald-400' : pair.poolPlayPointDiff < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
+                          {pair.poolPlayPointDiff > 0 ? '+' : ''}{pair.poolPlayPointDiff}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-6 text-sm">
-                      <span className="text-emerald-600 dark:text-emerald-400 font-black">{pair.poolPlayWins}W</span>
-                      <span className="text-xs text-gray-400 font-medium">{pair.poolPlayPointsScored} Pts</span>
-                      <span className={`font-mono font-bold text-xs ${pair.poolPlayPointDiff > 0 ? 'text-emerald-600 dark:text-emerald-400' : pair.poolPlayPointDiff < 0 ? 'text-rose-500' : 'text-gray-400'}`}>
-                        {pair.poolPlayPointDiff > 0 ? '+' : ''}{pair.poolPlayPointDiff}
-                      </span>
-                    </div>
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Pool Match Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

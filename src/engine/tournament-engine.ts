@@ -138,6 +138,7 @@ export function initializeTournament(
   // For Doubles (Grand Slam), generate the first pool round immediately
   if (type === SessionType.TOURNAMENT_DOUBLES) {
     state.matches = buildPoolPlayRound(state, 4);
+    state.currentPoolRound = 1;
   }
 
   return state;
@@ -250,6 +251,95 @@ export function buildPoolPlayRound(state: TournamentState, courtsCount: number):
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Pool Play Tiebreaker Detection & Generation
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Checks if there are ties at the UB/LB cutline in pool standings.
+ * The cutline is at the midpoint: top half → UB, bottom half → LB.
+ * Returns the tied pair IDs if a tiebreaker is needed, or empty array if clear.
+ */
+export function checkPoolTiebreakers(state: TournamentState): { needsTiebreaker: boolean; tiedPairIds: string[] } {
+  const sortedPairs = [...state.pairs].sort((a, b) => {
+    if ((a.poolPlayWins ?? 0) !== (b.poolPlayWins ?? 0)) return (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0);
+    if ((a.poolPlayPointDiff ?? 0) !== (b.poolPlayPointDiff ?? 0)) return (b.poolPlayPointDiff ?? 0) - (a.poolPlayPointDiff ?? 0);
+    return (b.poolPlayPointsScored ?? 0) - (a.poolPlayPointsScored ?? 0);
+  });
+
+  if (sortedPairs.length < 4) return { needsTiebreaker: false, tiedPairIds: [] };
+
+  const cutlineIndex = Math.ceil(sortedPairs.length / 2) - 1; // Last UB slot (0-indexed)
+  const cutlinePair = sortedPairs[cutlineIndex];
+  const nextPair = sortedPairs[cutlineIndex + 1];
+
+  if (!cutlinePair || !nextPair) return { needsTiebreaker: false, tiedPairIds: [] };
+
+  // Check if the pair at the cutline and the one just below are tied
+  const sameWins = (cutlinePair.poolPlayWins ?? 0) === (nextPair.poolPlayWins ?? 0);
+  const sameDiff = (cutlinePair.poolPlayPointDiff ?? 0) === (nextPair.poolPlayPointDiff ?? 0);
+  const samePts = (cutlinePair.poolPlayPointsScored ?? 0) === (nextPair.poolPlayPointsScored ?? 0);
+
+  if (sameWins && sameDiff && samePts) {
+    // Gather ALL pairs tied with the same stats around the cutline
+    const tiedStats = {
+      wins: cutlinePair.poolPlayWins ?? 0,
+      diff: cutlinePair.poolPlayPointDiff ?? 0,
+      pts: cutlinePair.poolPlayPointsScored ?? 0
+    };
+    const tiedPairIds = sortedPairs
+      .filter(p =>
+        (p.poolPlayWins ?? 0) === tiedStats.wins &&
+        (p.poolPlayPointDiff ?? 0) === tiedStats.diff &&
+        (p.poolPlayPointsScored ?? 0) === tiedStats.pts
+      )
+      .map(p => p.id);
+
+    return { needsTiebreaker: true, tiedPairIds };
+  }
+
+  return { needsTiebreaker: false, tiedPairIds: [] };
+}
+
+/**
+ * Builds tiebreaker matches for pairs tied at the UB/LB cutline.
+ * Tiebreaker matches use a 'pool_tiebreaker_' prefix.
+ */
+export function buildTiebreakerMatches(state: TournamentState, tiedPairIds: string[]): TournamentMatch[] {
+  if (tiedPairIds.length < 2) return [];
+
+  const newMatches: TournamentMatch[] = [];
+  const startMatchNum = state.matches.length + 1;
+  const tiedPairs = tiedPairIds.map(id => state.pairs.find(p => p.id === id)).filter(Boolean) as typeof state.pairs;
+
+  // Simple round-robin of tied pairs (or just pairwise if 2)
+  for (let i = 0; i < tiedPairs.length; i += 2) {
+    if (i + 1 < tiedPairs.length) {
+      newMatches.push({
+        id: `pool_tiebreaker_${startMatchNum + (i / 2)}`,
+        round: 999, // Special round number for tiebreakers
+        isLosersBracket: false,
+        matchNumber: startMatchNum + (i / 2),
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: tiedPairs[i].id,
+        teamBId: tiedPairs[i + 1].id,
+        courtId: null,
+        status: 'READY',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: false,
+        games: []
+      });
+    }
+  }
+
+  return newMatches;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Bracket Seeding
 // ─────────────────────────────────────────────────────────────
 
@@ -273,6 +363,9 @@ function getBracketSeeding(size: number): number[] {
 
 /**
  * Transitions from Pool Play to Bracket phase.
+ * For Grand Slam (TOURNAMENT_DOUBLES): uses UB/LB split seeding.
+ *   - Top half of pool standings → Upper Bracket (double-elimination advantage)
+ *   - Bottom half → Lower Bracket directly (eliminated on one loss within LB)
  * Idempotent: removes any existing bracket matches before generating.
  */
 export function generateBracket(state: TournamentState, type: SessionType): TournamentState {
@@ -292,20 +385,20 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
   const numParticipants = sortedPairs.length;
   if (numParticipants < 2) return state;
 
-  const p = Math.pow(2, Math.ceil(Math.log2(numParticipants)));
-  const seeding = getBracketSeeding(p);
-  
-  // Remove any existing bracket matches (idempotent)
+  // Remove any existing bracket/tiebreaker matches (idempotent)
   const poolMatches = state.matches.filter(m => m.id.startsWith('pool_match_'));
   
   const matches: TournamentMatch[] = [];
   let matchCounter = poolMatches.length + 1;
 
-  // ───────── DOUBLE ELIMINATION (The Grand Slam) ─────────
+  // ───────── DOUBLE ELIMINATION (The Grand Slam) with UB/LB Split Seeding ─────────
   if (type === SessionType.TOURNAMENT_DOUBLES) {
-    const k = Math.log2(p);
+    // Split teams: top half → UB, bottom half → LB
+    const ubCutoff = Math.ceil(numParticipants / 2);
+    const ubTeams = sortedPairs.slice(0, ubCutoff);
+    const lbTeams = sortedPairs.slice(ubCutoff);
 
-    // Special case: 2 teams — just play Grand Finals directly (no LB needed)
+    // Special case: 2 teams — just play Grand Finals directly
     if (numParticipants === 2) {
       const gfMatch: TournamentMatch = {
         id: `gf_m${matchCounter}`,
@@ -331,15 +424,109 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
       return {
         pairs: updatedPairs,
         phase: 'BRACKET',
-        matches: [...poolMatches, ...matches]
+        matches: [...poolMatches, ...matches],
+        maxPoolRounds: state.maxPoolRounds,
+        currentPoolRound: state.currentPoolRound
       };
     }
 
-    // 1. Winners Bracket matches
+    // Special case: 3 teams — 1 UB team gets bye to GF, 2 LB teams play, winner meets UB in GF
+    if (numParticipants === 3) {
+      // LB match: #2 vs #3
+      const lbMatch: TournamentMatch = {
+        id: `lb_r1_m${matchCounter}`,
+        round: 1,
+        isLosersBracket: true,
+        matchNumber: matchCounter++,
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: sortedPairs[1].id,
+        teamBId: sortedPairs[2].id,
+        courtId: null,
+        status: 'READY',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: false,
+        games: []
+      };
+      matches.push(lbMatch);
+
+      // Grand Finals: #1 (UB) vs LB winner
+      const gfMatch: TournamentMatch = {
+        id: `gf_m${matchCounter}`,
+        round: 2,
+        isLosersBracket: false,
+        matchNumber: matchCounter++,
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: sortedPairs[0].id,
+        teamBId: null,
+        courtId: null,
+        status: 'PENDING',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: true,
+        games: []
+      };
+      lbMatch.nextMatchId = gfMatch.id;
+      matches.push(gfMatch);
+
+      // GF Reset
+      const gfResetMatch: TournamentMatch = {
+        id: `gf_reset_m${matchCounter}`,
+        round: 3,
+        isLosersBracket: false,
+        matchNumber: matchCounter++,
+        nextMatchId: null,
+        nextLoserMatchId: null,
+        teamAId: null,
+        teamBId: null,
+        courtId: null,
+        status: 'PENDING',
+        startedAtEpochMs: null,
+        endedAtEpochMs: null,
+        winnerTeamId: null,
+        scoreA: null,
+        scoreB: null,
+        isBestOf3: true,
+        games: []
+      };
+      gfMatch.nextMatchId = gfResetMatch.id;
+      matches.push(gfResetMatch);
+
+      return {
+        pairs: updatedPairs,
+        phase: 'BRACKET',
+        matches: [...poolMatches, ...matches],
+        maxPoolRounds: state.maxPoolRounds,
+        currentPoolRound: state.currentPoolRound
+      };
+    }
+
+    // ─── General case: UB/LB split seeding ───
+    // UB bracket: standard double-elim seeding for ubTeams
+    const ubCount = ubTeams.length;
+    const ubP = Math.pow(2, Math.ceil(Math.log2(ubCount)));
+    const ubK = Math.log2(ubP);
+    const ubSeeding = getBracketSeeding(ubP);
+
+    // LB direct entrants bracket: single-elim seeding for lbTeams
+    const lbCount = lbTeams.length;
+    const lbP = lbCount > 0 ? Math.pow(2, Math.ceil(Math.log2(lbCount))) : 0;
+    const lbDirectK = lbP > 0 ? Math.log2(lbP) : 0;
+    const lbDirectSeeding = lbP > 0 ? getBracketSeeding(lbP) : [];
+
+    // 1. Winners Bracket matches (for ubTeams only)
     const wbNodes: TournamentMatch[][] = [];
-    for (let r = 0; r < k; r++) {
+    for (let r = 0; r < ubK; r++) {
       wbNodes.push([]);
-      const matchesInRound = p / Math.pow(2, r + 1);
+      const matchesInRound = ubP / Math.pow(2, r + 1);
       for (let i = 0; i < matchesInRound; i++) {
         const m: TournamentMatch = {
           id: `wb_r${r + 1}_m${matchCounter}`,
@@ -365,13 +552,12 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
       }
     }
 
-    // 2. Losers Bracket matches
-    const numLbRounds = Math.max(1, 2 * (k - 1));
-    const lbNodes: TournamentMatch[][] = [];
-    for (let r = 0; r < numLbRounds; r++) {
-      lbNodes.push([]);
-      const mRound = Math.floor(r / 2) + 1;
-      const matchesInRound = Math.max(1, p / Math.pow(2, mRound + 1));
+    // 2. LB Direct-entry bracket (for lbTeams — single elimination within LB)
+    // These teams play among themselves first; survivors merge with WB dropdowns
+    const lbDirectNodes: TournamentMatch[][] = [];
+    for (let r = 0; r < lbDirectK; r++) {
+      lbDirectNodes.push([]);
+      const matchesInRound = lbP / Math.pow(2, r + 1);
       for (let i = 0; i < matchesInRound; i++) {
         const m: TournamentMatch = {
           id: `lb_r${r + 1}_m${matchCounter}`,
@@ -392,15 +578,51 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
           isBestOf3: false,
           games: []
         };
-        lbNodes[r].push(m);
+        lbDirectNodes[r].push(m);
         matches.push(m);
       }
     }
 
-    // 3. Grand Finals match
+    // 3. Crossover LB rounds: WB losers drop into crossover matches vs LB survivors
+    // WB has ubK rounds. After each WB round, the loser drops to a crossover LB match.
+    // Structure: crossover rounds alternate between "receive WB dropdowns" and "reduce"
+    const crossoverNodes: TournamentMatch[][] = [];
+    const numCrossoverRounds = Math.max(1, 2 * (ubK - 1));
+
+    for (let r = 0; r < numCrossoverRounds; r++) {
+      crossoverNodes.push([]);
+      const mRound = Math.floor(r / 2) + 1;
+      const matchesInRound = Math.max(1, ubP / Math.pow(2, mRound + 1));
+      for (let i = 0; i < matchesInRound; i++) {
+        const crossLbRound = (lbDirectK > 0 ? lbDirectK : 0) + r + 1;
+        const m: TournamentMatch = {
+          id: `lb_r${crossLbRound}_m${matchCounter}`,
+          round: crossLbRound,
+          isLosersBracket: true,
+          matchNumber: matchCounter++,
+          nextMatchId: null,
+          nextLoserMatchId: null,
+          teamAId: null,
+          teamBId: null,
+          courtId: null,
+          status: 'PENDING',
+          startedAtEpochMs: null,
+          endedAtEpochMs: null,
+          winnerTeamId: null,
+          scoreA: null,
+          scoreB: null,
+          isBestOf3: false,
+          games: []
+        };
+        crossoverNodes[r].push(m);
+        matches.push(m);
+      }
+    }
+
+    // 4. Grand Finals match
     const gfMatch: TournamentMatch = {
       id: `gf_m${matchCounter}`,
-      round: k + 1,
+      round: ubK + 1,
       isLosersBracket: false,
       matchNumber: matchCounter++,
       nextMatchId: null,
@@ -419,10 +641,10 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
     };
     matches.push(gfMatch);
 
-    // 4. Grand Finals Reset match (activated if LB champion wins GF)
+    // 5. Grand Finals Reset match
     const gfResetMatch: TournamentMatch = {
       id: `gf_reset_m${matchCounter}`,
-      round: k + 2,
+      round: ubK + 2,
       isLosersBracket: false,
       matchNumber: matchCounter++,
       nextMatchId: null,
@@ -439,80 +661,108 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
       isBestOf3: true,
       games: []
     };
-    // Link GF -> GF Reset
     gfMatch.nextMatchId = gfResetMatch.id;
     matches.push(gfResetMatch);
 
     // ─── Link Winners Bracket Internal ───
-    for (let r = 0; r < k - 1; r++) {
+    for (let r = 0; r < ubK - 1; r++) {
       for (let i = 0; i < wbNodes[r].length; i++) {
         wbNodes[r][i].nextMatchId = wbNodes[r + 1][Math.floor(i / 2)].id;
       }
     }
-    // WB Finals -> Grand Finals
-    wbNodes[k - 1][0].nextMatchId = gfMatch.id;
+    // WB Finals → Grand Finals
+    wbNodes[ubK - 1][0].nextMatchId = gfMatch.id;
 
-    // ─── Link WB Losers dropping to LB ───
-    if (lbNodes.length > 0) {
-      // WB R1 losers -> LB R1
-      for (let i = 0; i < wbNodes[0].length; i++) {
-        if (lbNodes[0] && lbNodes[0][Math.floor(i / 2)]) {
-          wbNodes[0][i].nextLoserMatchId = lbNodes[0][Math.floor(i / 2)].id;
+    // ─── Link LB direct-entry bracket internal ───
+    for (let r = 0; r < lbDirectK - 1; r++) {
+      for (let i = 0; i < lbDirectNodes[r].length; i++) {
+        lbDirectNodes[r][i].nextMatchId = lbDirectNodes[r + 1][Math.floor(i / 2)].id;
+      }
+    }
+
+    // ─── Link LB direct-entry winner into crossover LB ───
+    if (lbDirectNodes.length > 0 && crossoverNodes.length > 0) {
+      const lbDirectFinal = lbDirectNodes[lbDirectNodes.length - 1];
+      // LB direct winners feed into the first crossover round
+      for (let i = 0; i < lbDirectFinal.length; i++) {
+        if (crossoverNodes[0] && crossoverNodes[0][Math.floor(i / 2)]) {
+          lbDirectFinal[i].nextMatchId = crossoverNodes[0][Math.floor(i / 2)].id;
+        } else if (crossoverNodes[0] && crossoverNodes[0][0]) {
+          lbDirectFinal[i].nextMatchId = crossoverNodes[0][0].id;
         }
       }
-      // Subsequent WB losers drop to LB major rounds
-      for (let r = 1; r < k - 1; r++) {
-        const lbMajorRoundIndex = 2 * r - 1;
-        if (lbNodes[lbMajorRoundIndex]) {
+    }
+
+    // ─── Link WB losers dropping to crossover LB ───
+    if (crossoverNodes.length > 0) {
+      // WB R1 losers → first crossover round
+      for (let i = 0; i < wbNodes[0].length; i++) {
+        if (crossoverNodes[0] && crossoverNodes[0][Math.floor(i / 2)]) {
+          wbNodes[0][i].nextLoserMatchId = crossoverNodes[0][Math.floor(i / 2)].id;
+        }
+      }
+      // Subsequent WB losers drop to crossover major rounds
+      for (let r = 1; r < ubK - 1; r++) {
+        const crossMajorIdx = 2 * r - 1;
+        if (crossoverNodes[crossMajorIdx]) {
           for (let i = 0; i < wbNodes[r].length; i++) {
-            const targetLbMatchIndex = Math.min(wbNodes[r].length - 1 - i, lbNodes[lbMajorRoundIndex].length - 1);
-            wbNodes[r][i].nextLoserMatchId = lbNodes[lbMajorRoundIndex][targetLbMatchIndex].id;
+            const targetIdx = Math.min(wbNodes[r].length - 1 - i, crossoverNodes[crossMajorIdx].length - 1);
+            wbNodes[r][i].nextLoserMatchId = crossoverNodes[crossMajorIdx][targetIdx].id;
           }
         }
       }
-      // WB Finals loser -> Losers Finals (last LB match)
-      wbNodes[k - 1][0].nextLoserMatchId = lbNodes[numLbRounds - 1][0].id;
+      // WB Finals loser → Losers Finals (last crossover match)
+      wbNodes[ubK - 1][0].nextLoserMatchId = crossoverNodes[numCrossoverRounds - 1][0].id;
     }
 
-    // ─── Link Losers Bracket Internal ───
-    for (let r = 0; r < numLbRounds - 1; r++) {
+    // ─── Link Crossover LB Internal ───
+    for (let r = 0; r < numCrossoverRounds - 1; r++) {
       if (r % 2 === 0) {
-        // Minor round -> Major round (same number of matches)
-        for (let i = 0; i < lbNodes[r].length; i++) {
-          if (lbNodes[r + 1] && lbNodes[r + 1][i]) {
-            lbNodes[r][i].nextMatchId = lbNodes[r + 1][i].id;
+        for (let i = 0; i < crossoverNodes[r].length; i++) {
+          if (crossoverNodes[r + 1] && crossoverNodes[r + 1][i]) {
+            crossoverNodes[r][i].nextMatchId = crossoverNodes[r + 1][i].id;
           }
         }
       } else {
-        // Major round -> Next minor round (half matches)
-        for (let i = 0; i < lbNodes[r].length; i++) {
-          if (lbNodes[r + 1] && lbNodes[r + 1][Math.floor(i / 2)]) {
-            lbNodes[r][i].nextMatchId = lbNodes[r + 1][Math.floor(i / 2)].id;
+        for (let i = 0; i < crossoverNodes[r].length; i++) {
+          if (crossoverNodes[r + 1] && crossoverNodes[r + 1][Math.floor(i / 2)]) {
+            crossoverNodes[r][i].nextMatchId = crossoverNodes[r + 1][Math.floor(i / 2)].id;
           }
         }
       }
     }
-    // LB Finals winner -> Grand Finals
-    if (lbNodes.length > 0 && lbNodes[numLbRounds - 1][0]) {
-      lbNodes[numLbRounds - 1][0].nextMatchId = gfMatch.id;
+    // LB Finals winner → Grand Finals
+    if (crossoverNodes.length > 0 && crossoverNodes[numCrossoverRounds - 1][0]) {
+      crossoverNodes[numCrossoverRounds - 1][0].nextMatchId = gfMatch.id;
     }
 
-    // ─── Seed Winners Round 1 ───
+    // ─── Seed Winners Bracket Round 1 (ubTeams only) ───
     for (let i = 0; i < wbNodes[0].length; i++) {
-      const seedA = seeding[i * 2];
-      const seedB = seeding[i * 2 + 1];
-      const pairA = seedA <= numParticipants ? sortedPairs[seedA - 1] : null;
-      const pairB = seedB <= numParticipants ? sortedPairs[seedB - 1] : null;
+      const seedA = ubSeeding[i * 2];
+      const seedB = ubSeeding[i * 2 + 1];
+      const pairA = seedA <= ubCount ? ubTeams[seedA - 1] : null;
+      const pairB = seedB <= ubCount ? ubTeams[seedB - 1] : null;
       wbNodes[0][i].teamAId = pairA ? pairA.id : null;
       wbNodes[0][i].teamBId = pairB ? pairB.id : null;
     }
 
-    // ─── Resolve Byes in WB R1 (and propagate to LB) ───
+    // ─── Seed LB Direct-entry Round 1 (lbTeams only) ───
+    if (lbDirectNodes.length > 0) {
+      for (let i = 0; i < lbDirectNodes[0].length; i++) {
+        const seedA = lbDirectSeeding[i * 2];
+        const seedB = lbDirectSeeding[i * 2 + 1];
+        const pairA = seedA <= lbCount ? lbTeams[seedA - 1] : null;
+        const pairB = seedB <= lbCount ? lbTeams[seedB - 1] : null;
+        lbDirectNodes[0][i].teamAId = pairA ? pairA.id : null;
+        lbDirectNodes[0][i].teamBId = pairB ? pairB.id : null;
+      }
+    }
+
+    // ─── Resolve Byes in WB R1 ───
     for (const m of wbNodes[0]) {
       if ((m.teamAId && !m.teamBId) || (!m.teamAId && m.teamBId)) {
         m.winnerTeamId = m.teamAId || m.teamBId;
         m.status = 'COMPLETED';
-        // Advance winner to WB R2
         if (m.nextMatchId) {
           const next = matches.find(x => x.id === m.nextMatchId);
           if (next) {
@@ -520,55 +770,70 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
             else if (!next.teamBId && next.teamAId !== m.winnerTeamId) next.teamBId = m.winnerTeamId;
           }
         }
-        // CRITICAL FIX: Bye produces no loser, so propagate bye to LB
-        // Mark the linked LB match slot as "no opponent" (the other loser fills it)
-        // We do NOT route a null loser — instead, we'll resolve LB byes below
       }
     }
 
-    // ─── Resolve Byes in LB R1 ───
-    // LB R1 matches receive losers from WB R1. If a WB R1 match was a bye,
-    // no loser drops down. Check LB R1 matches: if only one team, auto-advance.
-    if (lbNodes[0]) {
-      for (const lbm of lbNodes[0]) {
-        // Count how many WB R1 matches feed into this LB match
-        const feeders = wbNodes[0].filter(wm => wm.nextLoserMatchId === lbm.id);
-        const losersForThisMatch: string[] = [];
-        for (const feeder of feeders) {
-          if (feeder.status === 'COMPLETED' && feeder.teamAId && feeder.teamBId) {
-            // Real match completed — has a loser
-            const loserId = feeder.winnerTeamId === feeder.teamAId ? feeder.teamBId : feeder.teamAId;
-            if (loserId) losersForThisMatch.push(loserId);
-          }
-          // If bye (only one team), no loser is produced
-        }
-
-        if (losersForThisMatch.length >= 2) {
-          lbm.teamAId = losersForThisMatch[0];
-          lbm.teamBId = losersForThisMatch[1];
-          lbm.status = 'READY';
-        } else if (losersForThisMatch.length === 1) {
-          // Only one loser — auto-advance as bye
-          lbm.teamAId = losersForThisMatch[0];
-          lbm.teamBId = null;
-          lbm.winnerTeamId = losersForThisMatch[0];
-          lbm.status = 'COMPLETED';
-          lbm.endedAtEpochMs = Date.now();
-          // Advance this bye winner to LB R2
-          if (lbm.nextMatchId) {
-            const nextLb = matches.find(x => x.id === lbm.nextMatchId);
-            if (nextLb) {
-              if (!nextLb.teamAId) nextLb.teamAId = losersForThisMatch[0];
-              else if (!nextLb.teamBId && nextLb.teamAId !== losersForThisMatch[0]) nextLb.teamBId = losersForThisMatch[0];
+    // ─── Resolve Byes in LB Direct R1 ───
+    if (lbDirectNodes.length > 0) {
+      for (const m of lbDirectNodes[0]) {
+        if ((m.teamAId && !m.teamBId) || (!m.teamAId && m.teamBId)) {
+          m.winnerTeamId = m.teamAId || m.teamBId;
+          m.status = 'COMPLETED';
+          if (m.nextMatchId) {
+            const next = matches.find(x => x.id === m.nextMatchId);
+            if (next) {
+              if (!next.teamAId) next.teamAId = m.winnerTeamId;
+              else if (!next.teamBId && next.teamAId !== m.winnerTeamId) next.teamBId = m.winnerTeamId;
             }
           }
         }
-        // If 0 losers (both feeders were byes), LB match stays empty — will be
-        // auto-resolved when other paths fill it
       }
     }
 
-    // Set READY status for any WB/LB match that now has both teams
+    // ─── Resolve Byes propagated into crossover LB R1 ───
+    if (crossoverNodes.length > 0) {
+      // Check first crossover round — if only one team from either WB loser or LB direct winner
+      for (const crm of crossoverNodes[0]) {
+        // Count feeders from WB R1 (losers of completed matches)
+        const wbFeeders = wbNodes[0].filter(wm => wm.nextLoserMatchId === crm.id);
+        for (const feeder of wbFeeders) {
+          if (feeder.status === 'COMPLETED' && feeder.teamAId && feeder.teamBId) {
+            const loserId = feeder.winnerTeamId === feeder.teamAId ? feeder.teamBId : feeder.teamAId;
+            if (loserId) {
+              if (!crm.teamAId) crm.teamAId = loserId;
+              else if (!crm.teamBId && crm.teamAId !== loserId) crm.teamBId = loserId;
+            }
+          }
+        }
+
+        // Count feeders from LB direct bracket (winners advancing)
+        const lbFeeders = lbDirectNodes.length > 0 
+          ? lbDirectNodes[lbDirectNodes.length - 1].filter(lm => lm.nextMatchId === crm.id) 
+          : [];
+        for (const feeder of lbFeeders) {
+          if (feeder.status === 'COMPLETED' && feeder.winnerTeamId) {
+            if (!crm.teamAId) crm.teamAId = feeder.winnerTeamId;
+            else if (!crm.teamBId && crm.teamAId !== feeder.winnerTeamId) crm.teamBId = feeder.winnerTeamId;
+          }
+        }
+
+        // If only one team in crossover match, auto-advance as bye
+        if ((crm.teamAId && !crm.teamBId) || (!crm.teamAId && crm.teamBId)) {
+          crm.winnerTeamId = crm.teamAId || crm.teamBId;
+          crm.status = 'COMPLETED';
+          crm.endedAtEpochMs = Date.now();
+          if (crm.nextMatchId) {
+            const nextCr = matches.find(x => x.id === crm.nextMatchId);
+            if (nextCr) {
+              if (!nextCr.teamAId) nextCr.teamAId = crm.winnerTeamId;
+              else if (!nextCr.teamBId && nextCr.teamAId !== crm.winnerTeamId) nextCr.teamBId = crm.winnerTeamId;
+            }
+          }
+        }
+      }
+    }
+
+    // Set READY status for any match that now has both teams
     for (const m of matches) {
       if (m.status === 'PENDING' && m.teamAId && m.teamBId) {
         m.status = 'READY';
@@ -578,11 +843,15 @@ export function generateBracket(state: TournamentState, type: SessionType): Tour
     return {
       pairs: updatedPairs,
       phase: 'BRACKET',
-      matches: [...poolMatches, ...matches]
+      matches: [...poolMatches, ...matches],
+      maxPoolRounds: state.maxPoolRounds,
+      currentPoolRound: state.currentPoolRound
     };
   }
 
   // ───────── SINGLE ELIMINATION (Knockout Sprint & Chaos) ─────────
+  const p = Math.pow(2, Math.ceil(Math.log2(numParticipants)));
+  const seeding = getBracketSeeding(p);
   const numRounds = Math.log2(p);
   const matchNodes: TournamentMatch[][] = [];
   
