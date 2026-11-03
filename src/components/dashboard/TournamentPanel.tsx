@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
+import { QuickScoreChips } from '@/components/ui/QuickScoreChips';
 import { SessionType, TournamentPair, Player, TournamentMatch } from '@/types/models';
 import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
-import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches } from '@/engine/tournament-engine';
+import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches, hasDownstreamBracketMatchStarted } from '@/engine/tournament-engine';
 
 export default function TournamentPanel() {
   const { session, players } = useStore();
@@ -14,6 +15,16 @@ export default function TournamentPanel() {
   const [scoreA, setScoreA] = useState(11);
   const [scoreB, setScoreB] = useState(9);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [bracketEditError, setBracketEditError] = useState<string | null>(null);
+  const [pendingReversal, setPendingReversal] = useState<{
+    matchId: string;
+    winnerTeamId: string;
+    scoreA?: number;
+    scoreB?: number;
+    matchNumber: number;
+    currentWinnerName: string;
+    newWinnerName: string;
+  } | null>(null);
   const [isEditingPairs, setIsEditingPairs] = useState(false);
   const [showPoolStandingsInBracket, setShowPoolStandingsInBracket] = useState(false);
   const [selectedPoolRounds, setSelectedPoolRounds] = useState(3);
@@ -232,6 +243,29 @@ export default function TournamentPanel() {
             </button>
           )}
         </div>
+
+        {/* Chaos Roulette player-count guidance */}
+        {session?.sessionType === SessionType.TOURNAMENT_CHAOS && (() => {
+          const n = checkedInPlayers.length;
+          const isIdeal = n >= 4 && (n & (n - 1)) === 0;
+          return (
+            <div className={`p-4 rounded-2xl border text-sm flex items-start gap-2 ${
+              isIdeal
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-200'
+                : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-200'
+            }`}>
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              <div>
+                <span className="font-black">
+                  {isIdeal ? `${n} players: halves cleanly every round.` : `${n} players: not 8, 16 or 32.`}
+                </span>{' '}
+                <span className="font-medium">
+                  Chaos Roulette works best with 8, 16 or 32 players. If a round has an odd number of teams, one team gets a bye and advances automatically.
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Manual Pair Form */}
         <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
@@ -454,21 +488,54 @@ export default function TournamentPanel() {
     }
   };
 
+  const commitBracketMatchUpdate = (matchId: string, winnerTeamId: string, customScoreA?: number, customScoreB?: number) => {
+    if (!session || !state) return;
+    setBracketEditError(null);
+    const newState = advanceMatchWinner(state, matchId, winnerTeamId, customScoreA, customScoreB);
+
+    // Check if tournament is done (NOT for Chaos — Chaos uses advanceChaosRound)
+    const isChaos = session.sessionType === SessionType.TOURNAMENT_CHAOS;
+    const bracketMatches = newState.matches.filter(m => !m.id.startsWith('pool_match_'));
+    const allCompleted = !isChaos && bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
+
+    useStore.getState().updateSession(session.id, {
+      tournamentState: {
+        ...newState,
+        phase: isChaos ? 'BRACKET' : (allCompleted ? 'COMPLETED' : newState.phase)
+      }
+    });
+  };
+
   const handleAdvanceBracketMatch = (matchId: string, winnerTeamId: string, customScoreA?: number, customScoreB?: number) => {
     if (session && state) {
-      const newState = advanceMatchWinner(state, matchId, winnerTeamId, customScoreA, customScoreB);
-
-      // Check if tournament is done (NOT for Chaos — Chaos uses advanceChaosRound)
-      const isChaos = session.sessionType === SessionType.TOURNAMENT_CHAOS;
-      const bracketMatches = newState.matches.filter(m => !m.id.startsWith('pool_match_'));
-      const allCompleted = !isChaos && bracketMatches.length > 0 && bracketMatches.every(m => m.status === 'COMPLETED');
-      
-      useStore.getState().updateSession(session.id, {
-        tournamentState: {
-          ...newState,
-          phase: isChaos ? 'BRACKET' : (allCompleted ? 'COMPLETED' : newState.phase)
+      // ─── Reversal safety guard ───
+      // Flipping the winner of a finished match is blocked once any downstream match it feeds
+      // has already started or completed, and requires confirmation via modal otherwise.
+      const existing = state.matches.find(m => m.id === matchId);
+      const isWinnerChange = !!existing && existing.status === 'COMPLETED' && !!existing.winnerTeamId && existing.winnerTeamId !== winnerTeamId;
+      if (existing && isWinnerChange) {
+        const isChaosSession = session.sessionType === SessionType.TOURNAMENT_CHAOS;
+        if (hasDownstreamBracketMatchStarted(state, matchId, isChaosSession)) {
+          setBracketEditError(
+            isChaosSession
+              ? 'Cannot reverse match winner — the next Chaos round has already been generated.'
+              : 'Cannot reverse match winner — a downstream bracket match fed by this result has already started or been scored.'
+          );
+          return;
         }
-      });
+        setPendingReversal({
+          matchId,
+          winnerTeamId,
+          scoreA: customScoreA,
+          scoreB: customScoreB,
+          matchNumber: existing.matchNumber,
+          currentWinnerName: getTeamName(existing.winnerTeamId),
+          newWinnerName: getTeamName(winnerTeamId),
+        });
+        return;
+      }
+
+      commitBracketMatchUpdate(matchId, winnerTeamId, customScoreA, customScoreB);
     }
   };
 
@@ -611,16 +678,6 @@ export default function TournamentPanel() {
             Round {maxRound} • {chaosMatches.length} total matches
           </span>
         </div>
-
-        {!isReadOnly && canAdvanceChaos && (
-          <button
-            onClick={handleAdvanceChaosRound}
-            className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-md transition-all flex items-center gap-2 animate-pulse-soft"
-          >
-            <span>🌪️ Generate Next Chaos Round</span>
-            <ArrowRight size={16} />
-          </button>
-        )}
       </div>
 
       {/* Rounds in Descending Order (newest round at top) */}
@@ -815,6 +872,14 @@ export default function TournamentPanel() {
                               </div>
                             </div>
 
+                            <QuickScoreChips
+                              teamAName={getTeamName(match.teamAId)}
+                              teamBName={getTeamName(match.teamBId)}
+                              currentA={scoreA}
+                              currentB={scoreB}
+                              onPick={(a, b) => { setScoreA(a); setScoreB(b); }}
+                            />
+
                             {scoreA === scoreB ? (
                               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                             ) : (
@@ -920,6 +985,84 @@ export default function TournamentPanel() {
               </button>
               <button onClick={handleResetTournament} className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md">
                 Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Downstream Reversal Blocked Toast ─── */}
+      {bracketEditError && (
+        <div role="alert" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg p-4 rounded-2xl bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 shadow-2xl flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 text-sm font-semibold text-rose-800 dark:text-rose-200">
+            <AlertCircle size={18} className="shrink-0 mt-0.5" />
+            <span>{bracketEditError}</span>
+          </div>
+          <button onClick={() => setBracketEditError(null)} className="text-xs font-bold text-rose-600 dark:text-rose-300 hover:underline shrink-0">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* ─── Reverse Match Winner Confirmation Modal ─── */}
+      {pendingReversal && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in"
+          onClick={() => setPendingReversal(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-gray-200 dark:border-gray-800 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-amber-600 dark:text-amber-400">
+                Reverse Match #{pendingReversal.matchNumber} Winner?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                This will flip the recorded result and update downstream bracket placements.
+              </p>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-gray-800/60 rounded-2xl p-4 space-y-2.5 border border-gray-200 dark:border-gray-700 text-xs">
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-gray-500 dark:text-gray-400 font-semibold">Current Winner:</span>
+                <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{pendingReversal.currentWinnerName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-px bg-gray-200 dark:bg-gray-700 flex-1" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Becomes</span>
+                <div className="h-px bg-gray-200 dark:bg-gray-700 flex-1" />
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">New Winner:</span>
+                <span className="font-black text-emerald-700 dark:text-emerald-300 truncate">{pendingReversal.newWinnerName}</span>
+              </div>
+              {pendingReversal.scoreA !== undefined && pendingReversal.scoreB !== undefined && (
+                <div className="pt-1 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center text-gray-500 dark:text-gray-400">
+                  <span className="font-semibold">Recorded Score:</span>
+                  <span className="font-mono font-black text-gray-800 dark:text-gray-200">{pendingReversal.scoreA} – {pendingReversal.scoreB}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingReversal(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-800 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const rev = pendingReversal;
+                  setPendingReversal(null);
+                  commitBracketMatchUpdate(rev.matchId, rev.winnerTeamId, rev.scoreA, rev.scoreB);
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-sm shadow-md transition-colors"
+              >
+                Confirm Reverse
               </button>
             </div>
           </div>
@@ -1046,6 +1189,14 @@ export default function TournamentPanel() {
                                 </div>
                               </div>
                             </div>
+                            <QuickScoreChips
+                              teamAName={getTeamName(match.teamAId)}
+                              teamBName={getTeamName(match.teamBId)}
+                              currentA={scoreA}
+                              currentB={scoreB}
+                              onPick={(a, b) => { setScoreA(a); setScoreB(b); }}
+                            />
+
                             {scoreA === scoreB ? (
                               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                             ) : (
@@ -1084,6 +1235,7 @@ export default function TournamentPanel() {
           {poolMatches.length > 0 && (() => {
             const sortedStandings = [...pairs].sort((a, b) => b.poolPlayWins - a.poolPlayWins || b.poolPlayPointDiff - a.poolPlayPointDiff || b.poolPlayPointsScored - a.poolPlayPointsScored);
             const cutline = Math.ceil(sortedStandings.length / 2);
+            const hasAnyCompletedPoolMatch = completedPoolMatches.length > 0;
             return (
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
               <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
@@ -1100,7 +1252,7 @@ export default function TournamentPanel() {
                       <div className="px-5 py-2 bg-gradient-to-r from-rose-50 via-rose-100 to-rose-50 dark:from-rose-950/40 dark:via-rose-950/60 dark:to-rose-950/40 flex items-center gap-2">
                         <div className="flex-1 h-px bg-rose-300 dark:bg-rose-700" />
                         <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest whitespace-nowrap">
-                          ↓ Lower Bracket Cutline ↓
+                          {hasAnyCompletedPoolMatch ? '↓ Lower Bracket Cutline ↓' : '↓ Provisional Cutline ↓'}
                         </span>
                         <div className="flex-1 h-px bg-rose-300 dark:bg-rose-700" />
                       </div>
@@ -1248,6 +1400,14 @@ export default function TournamentPanel() {
                           </div>
                         </div>
 
+                        <QuickScoreChips
+                          teamAName={getTeamName(match.teamAId)}
+                          teamBName={getTeamName(match.teamBId)}
+                          currentA={scoreA}
+                          currentB={scoreB}
+                          onPick={(a, b) => { setScoreA(a); setScoreB(b); }}
+                        />
+
                         {scoreA === scoreB ? (
                           <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                         ) : (
@@ -1292,6 +1452,28 @@ export default function TournamentPanel() {
               );
             })}
           </div>
+
+          {/* ─── Sticky Bottom CTA Bar (visible when all current-round matches are scored) ─── */}
+          {allPoolDone && !inTiebreakerPhase && (
+            <div className="sticky bottom-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-4 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center justify-between flex-wrap gap-3">
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                ✅ All {poolMatches.length} matches scored
+              </span>
+              <div className="flex items-center gap-3">
+                {canAddMoreRounds && (
+                  <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+                    Next Pool Round →
+                  </button>
+                )}
+                {(reachedMaxRounds || !maxPoolRounds) && (
+                  <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2">
+                    <span>🏟️ Generate Bracket</span>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1307,15 +1489,6 @@ export default function TournamentPanel() {
                     Score matches to determine advancing players. Survivors re-pair after each round.
                   </p>
                 </div>
-                {canAdvanceChaos && (
-                  <button
-                    onClick={handleAdvanceChaosRound}
-                    className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-md transition-all flex items-center gap-2 animate-pulse-soft"
-                  >
-                    <span>🌪️ Generate Next Chaos Round</span>
-                    <ArrowRight size={16} />
-                  </button>
-                )}
               </div>
 
               {renderChaosRoundView(false)}
@@ -1401,11 +1574,6 @@ export default function TournamentPanel() {
                   <h3 className="text-2xl sm:text-4xl font-black text-gray-900 dark:text-gray-100 mt-1">
                     {chaosChampionName || 'Tournament Winner'}
                   </h3>
-                  {chaosChampionP1 && chaosChampionP2 && (
-                    <p className="text-sm sm:text-base font-bold text-gray-700 dark:text-gray-300 mt-1">
-                      {chaosChampionP1.name} & {chaosChampionP2.name}
-                    </p>
-                  )}
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 font-semibold mt-1">
                     Survived all {maxRound} rounds and conquered the roulette wheel!
                   </p>

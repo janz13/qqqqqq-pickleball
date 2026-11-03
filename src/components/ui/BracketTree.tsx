@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { Trophy, Medal, Award, RefreshCw, Edit3, X, Check, Flame, Crown, ArrowDown, Layout, Shield } from 'lucide-react';
+import { QuickScoreChips } from './QuickScoreChips';
 
 export interface TournamentMatch {
   id: string;
@@ -148,6 +149,8 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     if (matchCount === 1) return hasDoubleElim ? 'Upper Bracket Final' : 'Final';
     if (matchCount === 2) return hasDoubleElim ? 'Upper Bracket Semifinals' : 'Semifinals';
     if (matchCount === 4) return hasDoubleElim ? 'Upper Bracket Quarterfinals' : 'Quarterfinals';
+    if (matchCount === 8) return hasDoubleElim ? 'Upper Bracket Round of 16' : 'Round of 16';
+    if (matchCount === 16) return hasDoubleElim ? 'Upper Bracket Round of 32' : 'Round of 32';
     return hasDoubleElim ? `Upper Bracket Round ${roundNum}` : `Round ${roundNum}`;
   };
 
@@ -255,7 +258,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               {bracketType === 'upper' && <Trophy size={11} className="text-indigo-500" />}
               {bracketType === 'lower' && <Flame size={11} className="text-amber-500" />}
               {bracketType === 'final' && <Crown size={11} className="text-emerald-500" />}
-              Match #{match.position}
+              {match.is3rdPlaceMatch ? `3rd Place • Match #${match.position}` : `Match #${match.position}`}
               {match.isBestOf3 && (
                 <span className="text-[9px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-black uppercase">
                   ⚔️ Bo3
@@ -444,17 +447,40 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
       )}
 
       {/* ─── Liquipedia Canvas ─── */}
-      <div className="w-full bg-white dark:bg-gray-950 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[650px] relative shadow-sm">
+      <div
+        className="w-full bg-white dark:bg-gray-950 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[650px] relative shadow-sm touch-none select-none"
+        style={{ touchAction: 'none' }}
+      >
         <TransformWrapper
-          initialScale={0.85}
+          initialScale={0.45}
           minScale={0.1}
           maxScale={3}
           centerOnInit={true}
+          fitOnInit={true}
+          limitToBounds={false}
+          centerZoomedOut={false}
+          disablePadding={true}
           smooth={false}
-          wheel={{ step: 0.02 }}
-          pinch={{ step: 2 }}
+          wheel={{ step: 0.04 }}
+          pinch={{ step: 5, allowPanning: true }}
+          panning={{ velocityDisabled: true }}
         >
-          {({ zoomIn, zoomOut, resetTransform }) => (
+          {({ zoomIn, zoomOut, resetTransform, centerView, instance }) => {
+            const handleFitToScreen = () => {
+              const wrapperEl = instance.wrapperComponent;
+              const contentEl = instance.contentComponent;
+              if (wrapperEl && contentEl) {
+                const wW = wrapperEl.clientWidth;
+                const wH = wrapperEl.clientHeight;
+                const cW = contentEl.scrollWidth;
+                const cH = contentEl.scrollHeight;
+                const fitScale = Math.min(wW / cW, wH / cH) * 0.9;
+                centerView(Math.max(0.15, Math.min(1, fitScale)));
+              } else {
+                centerView(0.35);
+              }
+            };
+            return (
             <>
               {/* Zoom Controls */}
               <div className="absolute bottom-4 right-4 z-40 flex gap-2 bg-white/90 dark:bg-gray-900/90 p-1.5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 backdrop-blur-md">
@@ -464,13 +490,16 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                 <button onClick={() => zoomIn()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom In">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button onClick={() => resetTransform()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Reset View">
+                <button onClick={() => centerView(0.45)} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Reset View">
                   <RefreshCw size={18} />
+                </button>
+                <button onClick={handleFitToScreen} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Fit to Screen">
+                  <Layout size={18} />
                 </button>
               </div>
               
-              <TransformComponent wrapperClass="w-full h-full cursor-grab active:cursor-grabbing" contentClass="p-16">
-                <div className="flex gap-16 min-h-[600px] items-start">
+              <TransformComponent wrapperClass="w-full h-full cursor-grab active:cursor-grabbing !w-full touch-none" contentClass="p-12 !w-max !max-w-none">
+                <div className="flex gap-16 min-h-[600px] items-start w-max">
                   
                   {/* Left Column: Upper & Lower Bracket Stacks (Liquipedia Format) */}
                   <div className="flex flex-col gap-16">
@@ -571,9 +600,22 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                         <div className="flex items-center justify-center gap-2 pb-2 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                           <Crown size={18} /> Grand Finals
                         </div>
-                        <div className="bg-gradient-to-b from-amber-50 to-emerald-50 dark:from-amber-950/20 dark:to-emerald-950/20 p-2 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xl">
-                          {renderLiquipediaMatchCard(grandFinalMatch, 'final')}
-                        </div>
+                        {finalsMatches.map((fm, idx) => {
+                          const showReset = idx === 0 || fm.player1 || fm.player2 || fm.winner;
+                          if (!showReset) return null;
+                          return (
+                            <div key={fm.id} className="space-y-2">
+                              {idx > 0 && (
+                                <span className="text-[10px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-800">
+                                  Bracket Reset Match
+                                </span>
+                              )}
+                              <div className="bg-gradient-to-b from-amber-50 to-emerald-50 dark:from-amber-950/20 dark:to-emerald-950/20 p-2 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xl">
+                                {renderLiquipediaMatchCard(fm, 'final')}
+                              </div>
+                            </div>
+                          );
+                        })}
                         <p className="text-[11px] font-bold text-gray-400 max-w-[240px]">
                           Upper Bracket Winner meets Lower Bracket Winner for the Championship Title!
                         </p>
@@ -584,7 +626,8 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                 </div>
               </TransformComponent>
             </>
-          )}
+            );
+          }}
         </TransformWrapper>
       </div>
 
@@ -651,6 +694,15 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                 </div>
               </div>
             </div>
+
+            {/* Quick-tap loser score chips */}
+            <QuickScoreChips
+              teamAName={activeMatchForScoring.player1 || 'Team A'}
+              teamBName={activeMatchForScoring.player2 || 'Team B'}
+              currentA={modalScore1}
+              currentB={modalScore2}
+              onPick={(a, b) => { setModalScore1(a); setModalScore2(b); }}
+            />
 
             {/* Error or winner hint */}
             {modalScore1 === modalScore2 ? (

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
 import { PlayerStatus, createPlayer, Player } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
+import { RosterRatioBanner } from '@/components/ui/RosterRatioBanner';
 import { Plus, Search, Upload, Download, FileUp, RefreshCw, Check } from 'lucide-react';
 
 /* eslint-disable @next/next/no-img-element */
@@ -209,6 +210,7 @@ export default function RosterPanel() {
 
   return (
     <div className="space-y-6 animate-slide-up relative">
+      <RosterRatioBanner />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 space-y-6">
             <form onSubmit={handleAddPlayer} className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-6 rounded-2xl flex flex-col gap-4">

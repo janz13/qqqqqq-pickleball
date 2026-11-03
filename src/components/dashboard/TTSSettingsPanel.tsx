@@ -3,6 +3,7 @@ import React from 'react';
 import { useTTS } from '@/hooks/useTTS';
 import { Volume2, Mic, Play, Settings2, Eye } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { RosterRatioBanner } from '@/components/ui/RosterRatioBanner';
 
 export default function TTSSettingsPanel() {
   const tts = useTTS();
@@ -17,6 +18,8 @@ export default function TTSSettingsPanel() {
   return (
     <div className="flex flex-col gap-6 max-w-2xl mx-auto animate-slide-up pb-20">
       <h2 className="text-3xl font-black tracking-tight text-slate-800 dark:text-slate-100">Settings</h2>
+
+      <RosterRatioBanner />
       
       {/* Matchmaking Mode Card */}
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl mb-2">

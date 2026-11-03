@@ -1,5 +1,5 @@
 import { Player, SessionType, TournamentState, createPlayer } from '../src/types/models';
-import { initializeTournament, buildPoolPlayRound, generateBracket, advanceMatchWinner, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches } from '../src/engine/tournament-engine';
+import { initializeTournament, buildPoolPlayRound, generateBracket, advanceMatchWinner, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches, hasDownstreamBracketMatchStarted } from '../src/engine/tournament-engine';
 
 function runSimulation(playerCount: number, mode: SessionType) {
   console.log(`\n===========================================`);
@@ -95,7 +95,7 @@ function runSimulation(playerCount: number, mode: SessionType) {
 
 describe('Tournament Simulation', () => {
   it('simulates tournaments without errors', () => {
-    const counts = [24, 36, 48];
+    const counts = [24, 36, 48, 64];
     for (const count of counts) {
       runSimulation(count, SessionType.TOURNAMENT_DOUBLES);
       runSimulation(count, SessionType.TOURNAMENT_SINGLE_ELIM);
@@ -273,6 +273,144 @@ describe('Tournament Simulation', () => {
     expect(tiebreakerMatches[0].status).toBe('READY');
     expect(tiebreakerMatches[0].teamAId).toBe('pair_4');
     expect(tiebreakerMatches[0].teamBId).toBe('pair_5');
+  });
+
+  it('correctly links 16-pair Double Elimination (8 UB + 8 LB) without match feed collisions', () => {
+    // 32 players = 16 pairs
+    const players: Player[] = [];
+    for (let i = 1; i <= 32; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    let state = initializeTournament(players, SessionType.TOURNAMENT_DOUBLES);
+    expect(state.pairs.length).toBe(16);
+
+    // Standings: 1..8 UB, 9..16 LB
+    state.pairs = state.pairs.map((pair, idx) => ({
+      ...pair,
+      poolPlayWins: 16 - idx,
+      poolPlayPointDiff: (16 - idx) * 5,
+      poolPlayPointsScored: (16 - idx) * 11
+    }));
+
+    state = generateBracket(state, SessionType.TOURNAMENT_DOUBLES);
+
+    // UB structure
+    const wbR1 = state.matches.filter(m => m.id.startsWith('wb_r1_'));
+    const wbR2 = state.matches.filter(m => m.id.startsWith('wb_r2_'));
+    const wbR3 = state.matches.filter(m => m.id.startsWith('wb_r3_'));
+    expect(wbR1.length).toBe(4);
+    expect(wbR2.length).toBe(2);
+    expect(wbR3.length).toBe(1);
+
+    // LB structure: 6 rounds
+    const lbR1 = state.matches.filter(m => m.id.startsWith('lb_r1_'));
+    const lbR2 = state.matches.filter(m => m.id.startsWith('lb_r2_'));
+    const lbR3 = state.matches.filter(m => m.id.startsWith('lb_r3_'));
+    const lbR4 = state.matches.filter(m => m.id.startsWith('lb_r4_'));
+    const lbR5 = state.matches.filter(m => m.id.startsWith('lb_r5_'));
+    const lbR6 = state.matches.filter(m => m.id.startsWith('lb_r6_'));
+
+    expect(lbR1.length).toBe(4);
+    expect(lbR2.length).toBe(4);
+    expect(lbR3.length).toBe(2);
+    expect(lbR4.length).toBe(2);
+    expect(lbR5.length).toBe(1);
+    expect(lbR6.length).toBe(1);
+
+    // Verify WB R1 losers drop into LB R2 (NOT LB R4)
+    for (const m of wbR1) {
+      expect(m.nextLoserMatchId).toMatch(/^lb_r2_/);
+    }
+
+    // Verify LB R1 winners advance to LB R2
+    for (const m of lbR1) {
+      expect(m.nextMatchId).toMatch(/^lb_r2_/);
+    }
+
+    // Verify WB R2 losers drop into LB R4
+    for (const m of wbR2) {
+      expect(m.nextLoserMatchId).toMatch(/^lb_r4_/);
+    }
+
+    // Verify LB R3 winners advance to LB R4
+    for (const m of lbR3) {
+      expect(m.nextMatchId).toMatch(/^lb_r4_/);
+    }
+
+    // Verify WB R3 (UB Final) loser drops into LB R6 (LB Final)
+    expect(wbR3[0].nextLoserMatchId).toMatch(/^lb_r6_/);
+
+    // Verify LB R5 winner advances to LB R6 (LB Final)
+    expect(lbR5[0].nextMatchId).toMatch(/^lb_r6_/);
+
+    // Verify GF feeders: WB R3 winner and LB R6 winner both feed to GF
+    const gf = state.matches.find(m => m.id.startsWith('gf_m'));
+    expect(wbR3[0].nextMatchId).toBe(gf?.id);
+    expect(lbR6[0].nextMatchId).toBe(gf?.id);
+
+    // Complete WB R1 and LB R1
+    for (const m of wbR1) {
+      state = advanceMatchWinner(state, m.id, m.teamAId!, 11, 9);
+    }
+    for (const m of lbR1) {
+      state = advanceMatchWinner(state, m.id, m.teamAId!, 11, 9);
+    }
+
+    // Now all 4 LB R2 matches should be READY with 1 LB winner and 1 WB loser
+    const updatedLbR2 = state.matches.filter(m => m.id.startsWith('lb_r2_'));
+    for (const m of updatedLbR2) {
+      expect(m.status).toBe('READY');
+      expect(m.teamAId).toBeTruthy();
+      expect(m.teamBId).toBeTruthy();
+      expect(m.teamAId).not.toBe(m.teamBId);
+    }
+  });
+
+  it('detects when downstream bracket or Chaos matches have started and blocks unsafe reversals', () => {
+    // 16 players = 8 teams in Single Elim (R1 = QF, R2 = Bo3 SF, R3 = Bo3 Final + 3rd place)
+    const players: Player[] = [];
+    for (let i = 1; i <= 16; i++) {
+      players.push(createPlayer({ id: `p${i}`, name: `Player ${i}` }));
+    }
+
+    let state = initializeTournament(players, SessionType.TOURNAMENT_SINGLE_ELIM);
+    const qfMatches = state.matches.filter(m => m.round === 1);
+    expect(qfMatches.length).toBe(4);
+
+    // Complete QF1 and QF2 so SF1 becomes READY (not yet started)
+    state = advanceMatchWinner(state, qfMatches[0].id, qfMatches[0].teamAId!, 11, 8);
+    state = advanceMatchWinner(state, qfMatches[1].id, qfMatches[1].teamAId!, 11, 7);
+
+    // SF1 is READY with 0 games played -> reversal of QF1 is still safe
+    expect(hasDownstreamBracketMatchStarted(state, qfMatches[0].id, false)).toBe(false);
+
+    // Play Game 1 of Bo3 SF1 -> SF1 becomes IN_PROGRESS -> QF1 reversal must now be blocked!
+    const sf1 = state.matches.find(m => m.id === qfMatches[0].nextMatchId)!;
+    expect(sf1.isBestOf3).toBe(true);
+    state = advanceMatchWinner(state, sf1.id, sf1.teamAId!, 11, 9);
+    expect(hasDownstreamBracketMatchStarted(state, qfMatches[0].id, false)).toBe(true);
+
+    // Complete Game 2 of Bo3 SF1 -> SF1 COMPLETED -> reversing SF1 while Final/3rd-place unstarted is allowed
+    state = advanceMatchWinner(state, sf1.id, sf1.teamAId!, 11, 6);
+    expect(hasDownstreamBracketMatchStarted(state, sf1.id, false)).toBe(false);
+
+    // Reversing a completed Bo3 match updates series cleanly to 2-0 for the new winner
+    state = advanceMatchWinner(state, sf1.id, sf1.teamBId!, 9, 11);
+    const reversedSf1 = state.matches.find(m => m.id === sf1.id)!;
+    expect(reversedSf1.winnerTeamId).toBe(sf1.teamBId);
+    expect(reversedSf1.games.length).toBe(2);
+    expect(reversedSf1.games.every(g => g.winnerId === sf1.teamBId)).toBe(true);
+
+    // Chaos Roulette: once Round 2 is generated, Round 1 matches report downstream started
+    let chaosState = initializeTournament(players, SessionType.TOURNAMENT_CHAOS);
+    const r1Chaos = chaosState.matches.filter(m => m.round === 1);
+    for (const m of r1Chaos) {
+      chaosState = advanceMatchWinner(chaosState, m.id, m.teamAId!, 11, 5);
+    }
+    expect(hasDownstreamBracketMatchStarted(chaosState, r1Chaos[0].id, true)).toBe(false);
+    chaosState = advanceChaosRound(chaosState, players);
+    expect(hasDownstreamBracketMatchStarted(chaosState, r1Chaos[0].id, true)).toBe(true);
   });
 });
 

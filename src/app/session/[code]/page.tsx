@@ -7,7 +7,7 @@ import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
 import { BracketTree } from '@/components/ui/BracketTree';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
-import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge } from 'lucide-react';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
@@ -20,6 +20,7 @@ export default function PlayerMonitorPage() {
   const { session, courts, players, matches } = useStore();
   
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [identitySearch, setIdentitySearch] = useState('');
   const [showIdentifyModal, setShowIdentifyModal] = useState(false);
   const [activeNotification, setActiveNotification] = useState<{court: string, partner: string, opponents: string} | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,6 +29,7 @@ export default function PlayerMonitorPage() {
   
   const [activeTab, setActiveTab] = useState<'queue' | 'games' | 'leaderboards' | 'tournament'>('queue');
   const [gamesFilter, setGamesFilter] = useState<'all' | 'mine'>('all');
+  const [expandedRoundGroups, setExpandedRoundGroups] = useState<Record<string, boolean>>({});
 
   // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
   const lastCloudTimestamp = useRef<string>('');
@@ -167,8 +169,9 @@ export default function PlayerMonitorPage() {
   }, [session]);
 
   const handleSelectIdentity = (id: string) => {
-    if (id !== 'spectator') setSelectedPlayerId(id);
+    setSelectedPlayerId(id === 'spectator' ? null : id);
     localStorage.setItem(`qqqqqq_identity_${session!.id}`, id);
+    setIdentitySearch('');
     setShowIdentifyModal(false);
   };
 
@@ -300,9 +303,17 @@ export default function PlayerMonitorPage() {
     }
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-        <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10">
+        <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10 space-y-4">
           <h1 className="text-2xl font-bold mb-2">Session Not Found</h1>
-          <p className="text-slate-400">Waiting for session data or invalid code: {code}</p>
+          <p className="text-slate-400">No active session found for code: <span className="font-mono font-bold text-white">{code}</span></p>
+          <div className="flex flex-col gap-3 pt-2">
+            <a
+              href="/"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition-all inline-flex items-center justify-center gap-2"
+            >
+              ← Back to Home
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -344,17 +355,61 @@ export default function PlayerMonitorPage() {
       const teamA = pairA ? [pairA.player1Id, pairA.player2Id] : [];
       const teamB = pairB ? [pairB.player1Id, pairB.player2Id] : [];
       
-      // Calculate round name
+      // Calculate round name and collapsible group metadata
       let courtLabel = '';
+      let roundGroupKey = 'other';
+      let roundGroupLabel = 'Matches';
+      let roundGroupSort = 0;
+
       if (tm.id.startsWith('pool_match_')) {
-        courtLabel = 'Pool Play';
+        courtLabel = `Pool Round ${tm.round}`;
+        roundGroupKey = `pool_r${tm.round}`;
+        roundGroupLabel = `Pool Round ${tm.round}`;
+        roundGroupSort = tm.round;
+      } else if (tm.id.startsWith('pool_tiebreaker_')) {
+        courtLabel = 'Cutline Tiebreaker';
+        roundGroupKey = 'pool_tb';
+        roundGroupLabel = 'Cutline Tiebreakers';
+        roundGroupSort = 50;
+      } else if (tm.id.startsWith('chaos_')) {
+        courtLabel = `Chaos Round ${tm.round}`;
+        roundGroupKey = `chaos_r${tm.round}`;
+        roundGroupLabel = `Chaos Round ${tm.round}`;
+        roundGroupSort = 100 + tm.round;
+      } else if (tm.id.startsWith('gf_')) {
+        courtLabel = tm.id.startsWith('gf_reset_') ? 'Bracket Reset Final' : 'Grand Finals';
+        roundGroupKey = 'gf';
+        roundGroupLabel = 'Grand Finals';
+        roundGroupSort = 900 + tm.round;
+      } else if (tm.is3rdPlaceMatch || tm.id.startsWith('3rd_place_')) {
+        courtLabel = '3rd Place Match';
+        roundGroupKey = 'bronze';
+        roundGroupLabel = '3rd Place Match';
+        roundGroupSort = 850;
       } else {
-        const matchesInThisRound = tState.matches.filter(m => m.round === tm.round && m.isLosersBracket === tm.isLosersBracket && !m.id.startsWith('pool_match_'));
+        const matchesInThisRound = tState.matches.filter(
+          m => m.round === tm.round && m.isLosersBracket === tm.isLosersBracket && !m.id.startsWith('pool_') && !m.id.startsWith('gf_') && !m.is3rdPlaceMatch && !m.id.startsWith('3rd_place_')
+        );
         const matchCount = matchesInThisRound.length;
-        if (matchCount === 1) courtLabel = tm.isLosersBracket ? 'Losers Finals' : 'Championship';
-        else if (matchCount === 2) courtLabel = tm.isLosersBracket ? 'Losers Semifinals' : 'Semifinals';
-        else if (matchCount >= 3 && matchCount <= 4) courtLabel = tm.isLosersBracket ? 'Losers Quarterfinals' : 'Quarterfinals';
-        else courtLabel = tm.isLosersBracket ? `Losers R${tm.round}` : `Bracket R${tm.round}`;
+        if (tm.isLosersBracket) {
+          const maxLbRound = Math.max(0, ...tState.matches.filter(m => m.isLosersBracket).map(m => m.round));
+          if (tm.round === maxLbRound && matchCount === 1) courtLabel = 'Lower Bracket Final';
+          else if (tm.round === maxLbRound - 1 && matchCount === 1) courtLabel = 'Lower Bracket Semifinal';
+          else courtLabel = `Lower Bracket R${tm.round}`;
+          roundGroupKey = `lb_r${tm.round}`;
+          roundGroupLabel = courtLabel;
+          roundGroupSort = 500 + tm.round;
+        } else {
+          if (matchCount === 1) courtLabel = 'Championship';
+          else if (matchCount === 2) courtLabel = 'Semifinals';
+          else if (matchCount >= 3 && matchCount <= 4) courtLabel = 'Quarterfinals';
+          else if (matchCount >= 5 && matchCount <= 8) courtLabel = 'Round of 16';
+          else if (matchCount >= 9 && matchCount <= 16) courtLabel = 'Round of 32';
+          else courtLabel = `Bracket R${tm.round}`;
+          roundGroupKey = `ub_r${tm.round}`;
+          roundGroupLabel = courtLabel;
+          roundGroupSort = 200 + tm.round;
+        }
       }
       
       if (tm.isBestOf3) {
@@ -369,6 +424,9 @@ export default function PlayerMonitorPage() {
         id: tm.id,
         courtId: tm.courtId || '',
         courtLabel,
+        roundGroupKey,
+        roundGroupLabel,
+        roundGroupSort,
         teamA,
         teamB,
         startedAtEpochMs: tm.startedAtEpochMs || 0,
@@ -773,145 +831,221 @@ export default function PlayerMonitorPage() {
                 </p>
                 <p className="text-xs text-slate-400 mt-1">Finished games will show up here automatically</p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredCompletedMatches.map((match) => {
-                  const matchNumber = matchNumberMap.get(match.id) ?? 1;
-                  const court = courts.find(c => c.id === match.courtId);
-                  const courtName = match.courtLabel || court?.label || 'Court';
-                  const teamAPlayers = match.teamA.map(id => players.find(p => p.id === id)).filter(Boolean);
-                  const teamBPlayers = match.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
-                  const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
-                  const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
-                  const isMyMatch = selectedPlayerId && (match.teamA.includes(selectedPlayerId) || match.teamB.includes(selectedPlayerId));
-                  const myTeamWon = selectedPlayerId && ((match.teamA.includes(selectedPlayerId) && isWinnerA) || (match.teamB.includes(selectedPlayerId) && isWinnerB));
-                  const duration = formatDuration(match.startedAtEpochMs, match.endedAtEpochMs);
-                  const endTime = match.endedAtEpochMs ? new Date(match.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            ) : (() => {
+              const renderCompletedMatchCard = (match: any) => {
+                const matchNumber = matchNumberMap.get(match.id) ?? 1;
+                const court = courts.find(c => c.id === match.courtId);
+                const courtName = match.courtLabel || court?.label || 'Court';
+                const teamAPlayers = match.teamA.map((id: string) => players.find(p => p.id === id)).filter(Boolean);
+                const teamBPlayers = match.teamB.map((id: string) => players.find(p => p.id === id)).filter(Boolean);
+                const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
+                const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
+                const isMyMatch = selectedPlayerId && (match.teamA.includes(selectedPlayerId) || match.teamB.includes(selectedPlayerId));
+                const myTeamWon = selectedPlayerId && ((match.teamA.includes(selectedPlayerId) && isWinnerA) || (match.teamB.includes(selectedPlayerId) && isWinnerB));
+                const duration = formatDuration(match.startedAtEpochMs, match.endedAtEpochMs);
+                const endTime = match.endedAtEpochMs ? new Date(match.endedAtEpochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
-                  return (
-                    <div
-                      key={match.id}
-                      className={`bg-slate-800/60 rounded-2xl border p-4 transition-all ${
-                        isMyMatch ? 'border-blue-500/60 bg-blue-950/20 shadow-md shadow-blue-500/5' : 'border-slate-700/60'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/5 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                            Match #{matchNumber}
+                return (
+                  <div
+                    key={match.id}
+                    className={`bg-slate-800/60 rounded-2xl border p-4 transition-all ${
+                      isMyMatch ? 'border-blue-500/60 bg-blue-950/20 shadow-md shadow-blue-500/5' : 'border-slate-700/60'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                          Match #{matchNumber}
+                        </span>
+                        <span className="text-slate-400 font-medium">
+                          {courtName}
+                        </span>
+                        {isMyMatch && (
+                          <span className={`px-2 py-0.5 rounded font-bold ${
+                            myTeamWon ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
+                          }`}>
+                            {myTeamWon ? '🏆 Victory' : 'Played'}
                           </span>
-                          <span className="text-slate-400 font-medium">
-                            {courtName}
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-slate-400">
+                        {(match as any).games && (match as any).games.length > 0 && (
+                          <div className="flex items-center gap-1.5 mr-2 font-mono">
+                            {(match as any).games.map((g: any, i: number) => (
+                              <span key={i} className="px-1.5 py-0.5 bg-slate-900/50 rounded border border-slate-700">
+                                {g.scoreA}-{g.scoreB}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Clock size={12} /> {duration}
+                        </span>
+                        {endTime && <span>{endTime}</span>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Team A */}
+                      <div className={`p-3 rounded-xl border ${
+                        isWinnerA ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {(match as any).teamAName || 'Team 1'}
                           </span>
-                          {isMyMatch && (
-                            <span className={`px-2 py-0.5 rounded font-bold ${
-                              myTeamWon ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
-                            }`}>
-                              {myTeamWon ? '🏆 Victory' : 'Played'}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {match.scoreA != null && (
+                              <span className="font-mono text-lg font-black text-slate-200">{match.scoreA}</span>
+                            )}
+                            {isWinnerA && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                <Trophy size={10} /> Winner
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3 text-slate-400">
-                          {(match as any).games && (match as any).games.length > 0 && (
-                            <div className="flex items-center gap-1.5 mr-2 font-mono">
-                              {(match as any).games.map((g: any, i: number) => (
-                                <span key={i} className="px-1.5 py-0.5 bg-slate-900/50 rounded border border-slate-700">
-                                  {g.scoreA}-{g.scoreB}
-                                </span>
-                              ))}
+                        <div className="space-y-1.5">
+                          {teamAPlayers.map((p: any, idx: number) => (
+                            <div key={p?.id || idx} className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {p?.photoUrl ? (
+                                  <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                ) : (
+                                  (p?.name || '??').substring(0, 2).toUpperCase()
+                                )}
+                              </div>
+                              <span className={`text-sm font-semibold truncate ${
+                                selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                              }`}>
+                                {p?.name || 'Player'}
+                              </span>
                             </div>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <Clock size={12} /> {duration}
-                          </span>
-                          {endTime && <span>{endTime}</span>}
+                          ))}
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Team A */}
-                        <div className={`p-3 rounded-xl border ${
-                          isWinnerA ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              {(match as any).teamAName || 'Team 1'}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {match.scoreA != null && (
-                                <span className="font-mono text-lg font-black text-slate-200">{match.scoreA}</span>
-                              )}
-                              {isWinnerA && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
-                                  <Trophy size={10} /> Winner
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            {teamAPlayers.map((p, idx) => (
-                              <div key={p?.id || idx} className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                  {p?.photoUrl ? (
-                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
-                                  ) : (
-                                    (p?.name || '??').substring(0, 2).toUpperCase()
-                                  )}
-                                </div>
-                                <span className={`text-sm font-semibold truncate ${
-                                  selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
-                                }`}>
-                                  {p?.name || 'Player'}
-                                </span>
-                              </div>
-                            ))}
+                      {/* Team B */}
+                      <div className={`p-3 rounded-xl border ${
+                        isWinnerB ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {(match as any).teamBName || 'Team 2'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {match.scoreB != null && (
+                              <span className="font-mono text-lg font-black text-slate-200">{match.scoreB}</span>
+                            )}
+                            {isWinnerB && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
+                                <Trophy size={10} /> Winner
+                              </span>
+                            )}
                           </div>
                         </div>
-
-                        {/* Team B */}
-                        <div className={`p-3 rounded-xl border ${
-                          isWinnerB ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/40 border-white/5'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              {(match as any).teamBName || 'Team 2'}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {match.scoreB != null && (
-                                <span className="font-mono text-lg font-black text-slate-200">{match.scoreB}</span>
-                              )}
-                              {isWinnerB && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
-                                  <Trophy size={10} /> Winner
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            {teamBPlayers.map((p, idx) => (
-                              <div key={p?.id || idx} className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                  {p?.photoUrl ? (
-                                    <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
-                                  ) : (
-                                    (p?.name || '??').substring(0, 2).toUpperCase()
-                                  )}
-                                </div>
-                                <span className={`text-sm font-semibold truncate ${
-                                  selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
-                                }`}>
-                                  {p?.name || 'Player'}
-                                </span>
+                        <div className="space-y-1.5">
+                          {teamBPlayers.map((p: any, idx: number) => (
+                            <div key={p?.id || idx} className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {p?.photoUrl ? (
+                                  <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
+                                ) : (
+                                  (p?.name || '??').substring(0, 2).toUpperCase()
+                                )}
                               </div>
-                            ))}
-                          </div>
+                              <span className={`text-sm font-semibold truncate ${
+                                selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                              }`}>
+                                {p?.name || 'Player'}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              };
+
+              if (!isTournament) {
+                return (
+                  <div className="space-y-4">
+                    {filteredCompletedMatches.map(m => renderCompletedMatchCard(m))}
+                  </div>
+                );
+              }
+
+              // Group completed tournament matches by round; auto-collapse completed earlier rounds
+              const groupMap = new Map<string, { key: string; label: string; sort: number; items: any[] }>();
+              filteredCompletedMatches.forEach((m: any) => {
+                const key = m.roundGroupKey || 'other';
+                if (!groupMap.has(key)) {
+                  groupMap.set(key, {
+                    key,
+                    label: m.roundGroupLabel || 'Completed Matches',
+                    sort: m.roundGroupSort ?? 0,
+                    items: [],
+                  });
+                }
+                groupMap.get(key)!.items.push(m);
+              });
+              const groups = Array.from(groupMap.values()).sort((a, b) => b.sort - a.sort);
+              const hasActiveOrUpcoming = inProgressMatches.length > 0 || pendingMatches.length > 0;
+
+              return (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Completed Rounds ({filteredCompletedMatches.length} matches)
+                  </h3>
+                  {groups.map((grp, idx) => {
+                    // Auto-collapse completed earlier rounds while active/upcoming games exist,
+                    // or keep only the latest finished round expanded once the tournament ends.
+                    const defaultOpen = !hasActiveOrUpcoming && idx === 0;
+                    const isOpen = expandedRoundGroups[grp.key] ?? defaultOpen;
+                    const hasMyMatch = !!selectedPlayerId && grp.items.some(
+                      m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId)
+                    );
+
+                    return (
+                      <div key={grp.key} className="rounded-2xl border border-slate-700/80 bg-slate-900/50 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedRoundGroups(prev => ({
+                              ...prev,
+                              [grp.key]: !isOpen,
+                            }))
+                          }
+                          className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-800/60 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="font-bold text-sm text-slate-100">{grp.label}</span>
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                              ✓ {grp.items.length} completed
+                            </span>
+                            {hasMyMatch && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                You Played
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-slate-400 flex items-center gap-1 text-xs font-semibold shrink-0">
+                            {isOpen ? 'Hide' : 'Show'}
+                            {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <div className="p-4 pt-2 space-y-3 border-t border-white/5">
+                            {grp.items.map(m => renderCompletedMatchCard(m))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </main>
       )}
@@ -1004,26 +1138,58 @@ export default function PlayerMonitorPage() {
       {/* Identity Selection Modal */}
       {showIdentifyModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full animate-slide-up shadow-2xl">
-            <h3 className="text-2xl font-bold text-white mb-2">Who are you?</h3>
-            <p className="text-slate-400 text-sm mb-6">Select your name to receive live match notifications.</p>
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full max-h-[85vh] flex flex-col animate-slide-up shadow-2xl">
+            <h3 className="text-2xl font-bold text-white mb-2 shrink-0">Who are you?</h3>
+            <p className="text-slate-400 text-sm mb-4 shrink-0">Select your name to receive live match notifications.</p>
+
+            {/* Sticky instant-filter search input for 32–64+ player sessions */}
+            <div className="sticky top-0 z-10 bg-slate-900 pb-3 shrink-0">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={identitySearch}
+                  onChange={e => setIdentitySearch(e.target.value)}
+                  placeholder="Search your name..."
+                  autoFocus
+                  aria-label="Search player name"
+                  className="w-full px-4 py-3 pr-10 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {identitySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setIdentitySearch('')}
+                    aria-label="Clear search"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-lg font-bold px-1"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
             
-            <div className="max-h-80 overflow-y-auto space-y-2 mb-6 pr-2">
-              {players.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => handleSelectIdentity(p.id)}
-                  className="w-full text-left p-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 hover:border-slate-500"
-                >
-                  <div className="font-bold text-lg">{p.name}</div>
-                  <div className="text-xs text-slate-400 uppercase tracking-widest mt-1">Level {p.skillLevel}</div>
-                </button>
-              ))}
+            <div className="flex-1 min-h-0 max-h-80 overflow-y-auto space-y-2 mb-6 pr-2">
+              {(() => {
+                const q = identitySearch.trim().toLowerCase();
+                const filtered = q ? players.filter(p => p.name.toLowerCase().includes(q)) : players;
+                if (filtered.length === 0) {
+                  return <p className="text-center text-sm text-slate-500 py-6">No players match &quot;{identitySearch}&quot;</p>;
+                }
+                return filtered.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleSelectIdentity(p.id)}
+                    className="w-full text-left p-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 hover:border-slate-500"
+                  >
+                    <div className="font-bold text-lg">{p.name}</div>
+                    <div className="text-xs text-slate-400 uppercase tracking-widest mt-1">Level {p.skillLevel}</div>
+                  </button>
+                ));
+              })()}
             </div>
             
             <button 
               onClick={() => handleSelectIdentity('spectator')}
-              className="w-full py-3 text-slate-400 font-medium hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+              className="w-full py-3 text-slate-400 font-medium hover:text-white hover:bg-slate-800 rounded-xl transition-colors shrink-0"
             >
               Continue as Spectator
             </button>

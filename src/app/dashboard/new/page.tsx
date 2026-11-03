@@ -44,10 +44,10 @@ export default function NewSessionPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-transparent py-12">
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-x-clip bg-transparent py-12">
       <div className="absolute inset-0 z-[-1] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950"></div>
       
-      <div className="glass dark:glass-dark rounded-[2.5rem] p-8 max-w-lg w-full animate-slide-up shadow-2xl border-white/40 max-h-[90vh] overflow-y-auto">
+      <div className="glass dark:glass-dark rounded-[2.5rem] p-8 max-w-lg w-full animate-slide-up shadow-2xl border-white/40">
         <h1 className="text-4xl font-black mb-8 text-center tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">New Session</h1>
         
         <form onSubmit={handleStart} className="space-y-8">
@@ -186,19 +186,23 @@ export default function NewSessionPage() {
                     <li><span className="font-semibold text-slate-600 dark:text-slate-300">Format:</span> Survival elimination. Winners advance, losers are out.</li>
                     <li><span className="font-semibold text-slate-600 dark:text-slate-300">New Partners:</span> Every single round, all survivors are randomly mixed into new pairs!</li>
                     <li>No permanent teams. Only the luckiest and most adaptable survive to the Final Four.</li>
+                    <li><span className="font-semibold text-amber-600 dark:text-amber-400">Best with 8, 16 or 32 players.</span> Other counts leave an odd number of teams in a round, and one random team gets a bye.</li>
                   </ul>
                 </button>
               </div>
             </div>
           )}
 
+          {/* Sticky footer keeps the primary CTA visible on compact screens */}
+          <div className="sticky bottom-0 z-10 -mx-8 -mb-8 px-8 py-5 rounded-b-[2.5rem] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200/70 dark:border-slate-700/70">
           <button 
             type="submit"
-            className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xl rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-blue-500/20 mt-4"
+            className="w-full min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xl rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-blue-500/20"
           >
             <Play size={24} fill="currentColor" />
             Start Session
           </button>
+          </div>
         </form>
       </div>
     </div>
