@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { Trophy, Medal, Award, RefreshCw, Edit3, X, Check, Flame, Crown, ArrowDown, Layout, Shield } from 'lucide-react';
-import { QuickScoreChips } from './QuickScoreChips';
+import { QuickScoreChips, clampScore, getScoreAdvisory } from './QuickScoreChips';
 
 export interface TournamentMatch {
   id: string;
@@ -125,7 +125,11 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   const upperMatches = matches.filter(m => !m.isLosersBracket && !m.isGrandFinals && !m.is3rdPlaceMatch);
   const lowerMatches = matches.filter(m => !!m.isLosersBracket);
   const finalsMatches = matches.filter(m => !!m.isGrandFinals);
-  const grandFinalMatch = finalsMatches[0] || matches[matches.length - 1];
+  const resetFinalMatch = finalsMatches.find(m => m.id.startsWith('gf_reset_'));
+  const activeResetPending = Boolean(resetFinalMatch && (resetFinalMatch.player1 || resetFinalMatch.player2) && !resetFinalMatch.winner);
+  const grandFinalMatch = (resetFinalMatch && resetFinalMatch.winner)
+    ? resetFinalMatch
+    : (finalsMatches[0] || matches[matches.length - 1]);
   const thirdPlaceMatch = matches.find(m => !!m.is3rdPlaceMatch);
 
   // Group Upper Bracket by round
@@ -168,7 +172,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   let fourthPlace: string | null = null;
 
   if (hasDoubleElim) {
-    if (grandFinalMatch && grandFinalMatch.winner) {
+    if (grandFinalMatch && grandFinalMatch.winner && !activeResetPending) {
       champion = grandFinalMatch.winner;
       secondPlace = grandFinalMatch.winner === grandFinalMatch.player1 ? grandFinalMatch.player2 ?? null : grandFinalMatch.player1 ?? null;
       
@@ -189,12 +193,13 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     // Single Elimination
     const maxRound = Math.max(0, ...matches.map(m => m.round));
     const finalsMatch = matches.find(m => m.round === maxRound && !m.is3rdPlaceMatch);
-    if (finalsMatch && finalsMatch.winner) {
+    const bronzePending = Boolean(thirdPlaceMatch && (thirdPlaceMatch.player1 || thirdPlaceMatch.player2) && !thirdPlaceMatch.winner);
+    if (finalsMatch && finalsMatch.winner && !bronzePending) {
       champion = finalsMatch.winner;
       secondPlace = finalsMatch.winner === finalsMatch.player1 ? finalsMatch.player2 ?? null : finalsMatch.player1 ?? null;
-    }
-    if (thirdPlaceMatch && thirdPlaceMatch.winner) {
-      thirdPlace = thirdPlaceMatch.winner;
+      if (thirdPlaceMatch && thirdPlaceMatch.winner) {
+        thirdPlace = thirdPlaceMatch.winner;
+      }
     }
   }
 
@@ -356,10 +361,10 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
       {/* ─── Liquipedia Navigation Controls ─── */}
       {hasDoubleElim && (
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl shadow-inner">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl shadow-inner max-w-full">
             <button
               onClick={() => setViewMode('all')}
-              className={`py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              className={`py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'all'
                   ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -369,7 +374,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('winners')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'winners'
                   ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -379,7 +384,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('losers')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'losers'
                   ? 'bg-white dark:bg-gray-900 text-amber-600 dark:text-amber-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -389,7 +394,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('finals')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'finals'
                   ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -406,9 +411,9 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
       {/* ─── Podium Display ─── */}
       {champion && (
-        <div className="flex justify-center items-end h-64 gap-2 md:gap-4 mb-2 mt-2 animate-slide-up">
+        <div className="flex justify-center items-end min-h-[260px] pt-8 gap-2 md:gap-4 mb-2 mt-2 animate-slide-up">
           {secondPlace && (
-            <div className="flex flex-col items-center w-1/3 max-w-[180px]">
+            <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[180px]">
               <div className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700">
                 {secondPlace}
               </div>
@@ -419,7 +424,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </div>
           )}
 
-          <div className="flex flex-col items-center w-1/3 max-w-[200px] z-10 relative">
+          <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[200px] z-10 relative">
             <div className="text-sm md:text-base font-extrabold text-amber-900 dark:text-amber-200 bg-gradient-to-r from-yellow-200 to-yellow-100 dark:from-yellow-900/60 dark:to-amber-900/60 px-4 py-2 rounded-full shadow-md mb-2 text-center border border-yellow-300 dark:border-yellow-700 truncate w-full">
               {champion}
             </div>
@@ -430,7 +435,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           </div>
 
           {thirdPlace && (
-            <div className="flex flex-col items-center w-1/3 max-w-[220px]">
+            <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[220px]">
               <div
                 className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700"
                 title={thirdPlace}
@@ -464,8 +469,23 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           wheel={{ step: 0.04 }}
           pinch={{ step: 5, allowPanning: true }}
           panning={{ velocityDisabled: true }}
+          onInit={(ref) => {
+            if (matches.length > 8 && typeof window !== 'undefined') {
+              requestAnimationFrame(() => {
+                const wrapperEl = ref.instance.wrapperComponent;
+                const contentEl = ref.instance.contentComponent;
+                if (wrapperEl && contentEl && contentEl.scrollWidth > 0 && contentEl.scrollHeight > 0) {
+                  const fitScale = Math.min(
+                    wrapperEl.clientWidth / contentEl.scrollWidth,
+                    wrapperEl.clientHeight / contentEl.scrollHeight
+                  ) * 0.9;
+                  ref.centerView(Math.max(0.15, Math.min(1, fitScale)));
+                }
+              });
+            }
+          }}
         >
-          {({ zoomIn, zoomOut, resetTransform, centerView, instance }) => {
+          {({ zoomIn, zoomOut, centerView, instance }) => {
             const handleFitToScreen = () => {
               const wrapperEl = instance.wrapperComponent;
               const contentEl = instance.contentComponent;
@@ -484,16 +504,16 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             <>
               {/* Zoom Controls */}
               <div className="absolute bottom-4 right-4 z-40 flex gap-2 bg-white/90 dark:bg-gray-900/90 p-1.5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 backdrop-blur-md">
-                <button onClick={() => zoomOut()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom Out">
+                <button type="button" onClick={() => zoomOut()} className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom Out" aria-label="Zoom Out">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button onClick={() => zoomIn()} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom In">
+                <button type="button" onClick={() => zoomIn()} className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Zoom In" aria-label="Zoom In">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <button onClick={() => centerView(0.45)} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Reset View">
+                <button type="button" onClick={() => centerView(0.45)} className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Reset View" aria-label="Reset View">
                   <RefreshCw size={18} />
                 </button>
-                <button onClick={handleFitToScreen} className="p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Fit to Screen">
+                <button type="button" onClick={handleFitToScreen} className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Fit to Screen" aria-label="Fit to Screen">
                   <Layout size={18} />
                 </button>
               </div>
@@ -639,7 +659,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               <h3 className="text-lg font-black text-gray-900 dark:text-gray-100">
                 {activeMatchForScoring.winner ? 'Edit Match Score' : 'Enter Match Score'}
               </h3>
-              <button onClick={() => setActiveMatchForScoring(null)} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={() => setActiveMatchForScoring(null)} aria-label="Close score dialog" className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <X size={20} />
               </button>
             </div>
@@ -651,16 +671,17 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                   {activeMatchForScoring.player1}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setModalScore1(Math.max(0, modalScore1 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
+                  <button type="button" aria-label={`Decrease score for ${activeMatchForScoring.player1}`} onClick={() => setModalScore1(Math.max(0, modalScore1 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
                   <input
                     type="number"
                     min="0"
                     max="99"
+                    aria-label={`${activeMatchForScoring.player1} score`}
                     value={modalScore1}
-                    onChange={e => setModalScore1(parseInt(e.target.value) || 0)}
+                    onChange={e => setModalScore1(clampScore(e.target.value))}
                     className="w-14 text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                   />
-                  <button onClick={() => setModalScore1(modalScore1 + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
+                  <button type="button" aria-label={`Increase score for ${activeMatchForScoring.player1}`} onClick={() => setModalScore1(Math.min(99, modalScore1 + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
                 </div>
               </div>
 
@@ -681,16 +702,17 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                   {activeMatchForScoring.player2}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setModalScore2(Math.max(0, modalScore2 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
+                  <button type="button" aria-label={`Decrease score for ${activeMatchForScoring.player2}`} onClick={() => setModalScore2(Math.max(0, modalScore2 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
                   <input
                     type="number"
                     min="0"
                     max="99"
+                    aria-label={`${activeMatchForScoring.player2} score`}
                     value={modalScore2}
-                    onChange={e => setModalScore2(parseInt(e.target.value) || 0)}
+                    onChange={e => setModalScore2(clampScore(e.target.value))}
                     className="w-14 text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                   />
-                  <button onClick={() => setModalScore2(modalScore2 + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
+                  <button type="button" aria-label={`Increase score for ${activeMatchForScoring.player2}`} onClick={() => setModalScore2(Math.min(99, modalScore2 + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
                 </div>
               </div>
             </div>
@@ -708,8 +730,15 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             {modalScore1 === modalScore2 ? (
               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
             ) : (
-              <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                Winner: {modalScore1 > modalScore2 ? activeMatchForScoring.player1 : activeMatchForScoring.player2}
+              <div className="space-y-1 text-center">
+                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  Winner: {modalScore1 > modalScore2 ? activeMatchForScoring.player1 : activeMatchForScoring.player2}
+                </div>
+                {getScoreAdvisory(modalScore1, modalScore2) && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                    {getScoreAdvisory(modalScore1, modalScore2)}
+                  </p>
+                )}
               </div>
             )}
 
@@ -722,7 +751,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               </button>
               <button
                 onClick={handleSubmitModalScore}
-                disabled={modalScore1 === modalScore2}
+                disabled={modalScore1 === modalScore2 || modalScore1 < 0 || modalScore2 < 0 || modalScore1 > 99 || modalScore2 > 99}
                 className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-1.5"
               >
                 <Check size={16} /> Save Score

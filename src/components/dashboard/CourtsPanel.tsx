@@ -8,9 +8,10 @@ import { CourtCard } from '@/components/ui/CourtCard';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { Plus, Play, Repeat, Users, X, PlusCircle } from 'lucide-react';
 import { useTTS } from '@/hooks/useTTS';
+import { priorityOrder } from '@/engine/queue-engine';
 
 export default function CourtsPanel() {
-  const { courts, players, matches, getUpcomingBatches, startBatch, addCourt } = useStore();
+  const { session, courts, players, matches, getUpcomingBatches, startBatch, addCourt, updateSession } = useStore();
   const tts = useTTS();
 
   const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
@@ -19,12 +20,9 @@ export default function CourtsPanel() {
   const activeCourtsCount = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
 
-  const queuedPlayers = players
-    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
-    .sort((a, b) => {
-      if (a.isLatecomer !== b.isLatecomer) return a.isLatecomer ? -1 : 1;
-      return a.queuedAtEpochMs - b.queuedAtEpochMs;
-    });
+  const queuedPlayers = priorityOrder(
+    players.filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
+  );
 
   const engineBatches = getUpcomingBatches();
   const [localBatches, setLocalBatches] = useState<ProposedMatch[]>([]);
@@ -56,6 +54,14 @@ export default function CourtsPanel() {
       batch.teamB = batch.teamB.map(p => p.id === swappingPlayer.playerId ? newPlayer : p);
     }
     setLocalBatches(newBatches);
+    if (session) {
+      updateSession(session.id, {
+        customBatches: newBatches.map(b => ({
+          teamA: b.teamA.map(p => p.id),
+          teamB: b.teamB.map(p => p.id)
+        }))
+      });
+    }
     setSwappingPlayer(null);
   };
 
@@ -161,8 +167,8 @@ export default function CourtsPanel() {
                   <div className="space-y-1">
                     {batch.teamA.map(p => (
                       <div key={p.id} className="flex items-center gap-2">
-                        <div className="flex-1"><PlayerCard player={p} compact /></div>
-                        <button onClick={() => setSwappingPlayer({batchIndex: idx, isTeamA: true, playerId: p.id})} className="p-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors">
+                        <div className="flex-1 min-w-0"><PlayerCard player={p} compact /></div>
+                        <button type="button" onClick={() => setSwappingPlayer({batchIndex: idx, isTeamA: true, playerId: p.id})} aria-label={`Swap ${p.name}`} title={`Swap ${p.name}`} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors shrink-0">
                           <Repeat size={14} />
                         </button>
                       </div>
@@ -172,8 +178,8 @@ export default function CourtsPanel() {
                   <div className="space-y-1">
                     {batch.teamB.map(p => (
                       <div key={p.id} className="flex items-center gap-2">
-                        <div className="flex-1"><PlayerCard player={p} compact /></div>
-                        <button onClick={() => setSwappingPlayer({batchIndex: idx, isTeamA: false, playerId: p.id})} className="p-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors">
+                        <div className="flex-1 min-w-0"><PlayerCard player={p} compact /></div>
+                        <button type="button" onClick={() => setSwappingPlayer({batchIndex: idx, isTeamA: false, playerId: p.id})} aria-label={`Swap ${p.name}`} title={`Swap ${p.name}`} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors shrink-0">
                           <Repeat size={14} />
                         </button>
                       </div>

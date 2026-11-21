@@ -139,7 +139,7 @@ export default function MatchHistoryPanel() {
 
   // Helper to format match duration
   const formatDuration = (startedAt: number, endedAt: number | null): string => {
-    if (!endedAt || endedAt < startedAt) return '< 1 min';
+    if (!startedAt || startedAt <= 0 || !endedAt || endedAt < startedAt) return '< 1 min';
     const totalSeconds = Math.floor((endedAt - startedAt) / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -419,12 +419,12 @@ export default function MatchHistoryPanel() {
                           : 'bg-gray-50/60 dark:bg-gray-800/30 border-gray-200/70 dark:border-gray-800'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
                         <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                           Team 1
                         </span>
                         {isWinnerA && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-sm">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-sm shrink-0">
                             <Trophy size={11} />
                             Winner
                           </span>
@@ -459,12 +459,12 @@ export default function MatchHistoryPanel() {
                           : 'bg-gray-50/60 dark:bg-gray-800/30 border-gray-200/70 dark:border-gray-800'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5">
                         <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                           Team 2
                         </span>
                         {isWinnerB && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-sm">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-sm shrink-0">
                             <Trophy size={11} />
                             Winner
                           </span>

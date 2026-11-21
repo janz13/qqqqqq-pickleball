@@ -9,7 +9,7 @@ import { BracketTree } from '@/components/ui/BracketTree';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
 import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
-import { buildNextBatches } from '@/engine/queue-engine';
+import { buildNextBatches, priorityOrder } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 
 export default function PlayerMonitorPage() {
@@ -79,7 +79,7 @@ export default function PlayerMonitorPage() {
          .from('sessions')
          .select('id, state_json, is_active, updated_at, join_code')
          .ilike('join_code', code)
-         .single();
+         .maybeSingle();
        if (data && isMounted) {
          if (!data.is_active || data.state_json?.session?.isActive === false) {
            router.replace(`/history/${data.id}?playerView=true`);
@@ -112,7 +112,7 @@ export default function PlayerMonitorPage() {
          })
          .subscribe();
 
-       // Polling fallback every 8 seconds — only as a safety net.
+       // Polling fallback every 4 seconds — only as a safety net.
        // The timestamp check (<=) prevents it from ever re-rendering unchanged data.
        const pollInterval = setInterval(async () => {
          if (!isMounted) return;
@@ -120,7 +120,7 @@ export default function PlayerMonitorPage() {
            .from('sessions')
            .select('id, state_json, is_active, updated_at')
            .ilike('join_code', code)
-           .single();
+           .maybeSingle();
          if (pollData && isMounted) {
            if (!pollData.is_active || pollData.state_json?.session?.isActive === false) {
              router.replace(`/history/${pollData.id}?playerView=true`);
@@ -128,7 +128,7 @@ export default function PlayerMonitorPage() {
            }
            applyCloudState(pollData.state_json, pollData.updated_at);
          }
-       }, 8000);
+       }, 4000);
        
        return () => clearInterval(pollInterval);
     };
@@ -203,8 +203,9 @@ export default function PlayerMonitorPage() {
       // Also search session.tournamentState.matches for the player's team
       const tState = session.tournamentState;
       const activeTourneyMatch = tState.matches.find(tm => {
-        if (tm.status !== 'IN_PROGRESS' && tm.status !== 'READY') return false;
         if (tm.endedAtEpochMs != null) return false;
+        const hasAssignedCourt = Boolean(tm.courtId) || courts.some(c => c.currentMatchId === tm.id);
+        if (tm.status !== 'IN_PROGRESS' && !(tm.status === 'READY' && hasAssignedCourt)) return false;
         const pairA = tState.pairs.find(p => p.id === tm.teamAId);
         const pairB = tState.pairs.find(p => p.id === tm.teamBId);
         const inA = pairA ? (pairA.player1Id === selectedPlayerId || pairA.player2Id === selectedPlayerId) : false;
@@ -322,21 +323,41 @@ export default function PlayerMonitorPage() {
   const activeMatches = matches.filter(m => m.endedAtEpochMs == null);
   const activePlayerIds = new Set(activeMatches.flatMap(m => [...m.teamA, ...m.teamB]));
 
-  const queuedPlayers = players
-    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
-    .sort((a, b) => {
-      if (a.isLatecomer !== b.isLatecomer) return a.isLatecomer ? -1 : 1;
-      return a.queuedAtEpochMs - b.queuedAtEpochMs;
-    });
+  const queuedPlayers = priorityOrder(
+    players.filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !activePlayerIds.has(p.id))
+  );
 
   // Calculate upcoming batches for player view:
   // If courts are open, calculate for available courts.
   // If all courts are full, preview the on-deck match for waiting players!
   const openCourtsCount = courts.filter(c => c.status === CourtStatus.OPEN).length;
   const batchesNeeded = openCourtsCount > 0 ? openCourtsCount : (session?.queueBatchesShown || 1);
-  const upcomingBatches = queuedPlayers.length >= 4 
+  const rawUpcomingBatches = queuedPlayers.length >= 4 
     ? buildNextBatches(queuedPlayers, batchesNeeded, session?.matchingMode || 'balanced', activePlayerIds).map(b => pairFour(b))
     : [];
+  const upcomingBatches = (() => {
+    const customBatches = session?.customBatches;
+    if (!customBatches || customBatches.length === 0 || rawUpcomingBatches.length === 0) {
+      return rawUpcomingBatches;
+    }
+    const eligibleMap = new Map(queuedPlayers.map(p => [p.id, p]));
+    const claimedIds = new Set<string>();
+    return rawUpcomingBatches.map((defaultBatch, idx) => {
+      const cb = customBatches[idx];
+      if (cb && cb.teamA.length === 2 && cb.teamB.length === 2) {
+        const ids = [...cb.teamA, ...cb.teamB];
+        const unique = new Set(ids);
+        if (unique.size === 4 && ids.every(id => eligibleMap.has(id) && !claimedIds.has(id))) {
+          ids.forEach(id => claimedIds.add(id));
+          return {
+            teamA: cb.teamA.map(id => eligibleMap.get(id)!),
+            teamB: cb.teamB.map(id => eligibleMap.get(id)!)
+          };
+        }
+      }
+      return defaultBatch;
+    });
+  })();
 
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
 
@@ -468,7 +489,7 @@ export default function PlayerMonitorPage() {
     : sortedCompletedMatches;
 
   const formatDuration = (startedAt: number, endedAt: number | null): string => {
-    if (!endedAt || endedAt < startedAt) return '< 1 min';
+    if (!startedAt || startedAt <= 0 || !endedAt || endedAt < startedAt) return '< 1 min';
     const totalSeconds = Math.floor((endedAt - startedAt) / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -478,20 +499,27 @@ export default function PlayerMonitorPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 relative">
-      <header className="glass-dark sticky top-0 z-10 px-4 py-4 border-b border-white/10 rounded-none mb-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-start gap-4">
+      <header className="bg-slate-900 sticky top-0 z-20 px-4 py-3 border-b border-white/10 rounded-none mb-6 shadow-md">
+        <div className="max-w-7xl mx-auto flex justify-between items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-black tracking-tight break-words">{session.name}</h1>
-            <p className="text-emerald-400 font-mono text-sm tracking-widest uppercase flex items-center gap-2 mt-1">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight break-words line-clamp-2">{session.name}</h1>
+            <p className="text-emerald-400 font-mono text-xs sm:text-sm tracking-widest uppercase flex items-center gap-2 mt-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               Live Status
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="bg-slate-800/80 px-4 py-2 rounded-xl flex items-center gap-2 border border-slate-700">
-              <LayoutGrid size={16} className="text-blue-400" />
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
+            <div className="bg-slate-800/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl flex items-center gap-2 border border-slate-700 text-xs sm:text-sm">
+              <LayoutGrid size={15} className="text-blue-400" />
               <span className="font-bold">{activeCourts}/{courts.length} Active</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowIdentifyModal(true)}
+              className="text-xs font-semibold text-blue-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"
+            >
+              {selectedPlayerId ? 'Change Player' : 'Select Player'}
+            </button>
           </div>
         </div>
       </header>
@@ -513,36 +541,34 @@ export default function PlayerMonitorPage() {
           {(!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
             <button 
               onClick={() => setActiveTab('queue')}
-              className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
             >
-              <Users size={18} /> Queue
+              <Users size={17} /> Queue
             </button>
           )}
           
           {session.sessionType && session.sessionType !== 'OPEN_PLAY' && (
             <button 
               onClick={() => setActiveTab('tournament')}
-              className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${(activeTab === 'tournament' || activeTab === 'queue') ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${(activeTab === 'tournament' || activeTab === 'queue') ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
             >
-              <GitMerge size={18} /> Bracket
+              <GitMerge size={17} /> Bracket
             </button>
           )}
 
           <button 
             onClick={() => setActiveTab('games')}
-            className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
-            <Swords size={18} /> Matches
+            <Swords size={17} /> Matches
           </button>
           
-          {(!session.sessionType || session.sessionType !== 'TOURNAMENT_SINGLE_ELIM') && (
-            <button 
-              onClick={() => setActiveTab('leaderboards')}
-              className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
-            >
-              <Trophy size={18} /> Standings
-            </button>
-          )}
+          <button 
+            onClick={() => setActiveTab('leaderboards')}
+            className={`flex-1 min-w-[104px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+          >
+            <Trophy size={17} /> Standings
+          </button>
         </div>
       </div>
 
@@ -673,7 +699,7 @@ export default function PlayerMonitorPage() {
                     onClick={() => setGamesFilter('mine')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${gamesFilter === 'mine' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                   >
-                    My Games ({completedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId)).length})
+                    My Games ({completedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId)).length + myInProgressMatches.length})
                   </button>
                 </div>
               )}
@@ -1221,8 +1247,29 @@ export default function PlayerMonitorPage() {
               )}
               
               {session.tournamentState.phase === 'POOL_PLAY' && (
-                <div className="glass-dark p-8 rounded-3xl text-center border border-white/5">
-                  <p className="text-slate-400">Currently in Pool Play phase. Watch the active courts for your next match!</p>
+                <div className="space-y-6">
+                  <div className="glass-dark p-6 rounded-3xl text-center border border-white/5 space-y-4">
+                    <p className="text-slate-300 text-sm">Pool Play is underway. View your scheduled matchups or live group standings below.</p>
+                    <div className="flex flex-wrap justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('games')}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
+                      >
+                        View Pool Matches
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('leaderboards')}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold transition-colors border border-slate-700"
+                      >
+                        View Pool Standings
+                      </button>
+                    </div>
+                  </div>
+                  <div className="glass-dark rounded-3xl p-4 sm:p-6 border border-white/5">
+                    <TournamentLeaderboard tournamentState={session.tournamentState} players={players} sessionType={session.sessionType} />
+                  </div>
                 </div>
               )}
 

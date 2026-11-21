@@ -300,7 +300,7 @@ export default function HistoryPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-4 md:p-8">
       {isPlayerView && (
-        <div className="bg-emerald-500/20 text-emerald-100 py-3 px-4 flex items-center justify-center gap-2 border-b border-emerald-500/30">
+        <div className="bg-emerald-600 dark:bg-emerald-500/20 text-white dark:text-emerald-100 py-3 px-4 flex items-center justify-center gap-2 border-b border-emerald-700 dark:border-emerald-500/30 rounded-t-xl mb-2">
           <CheckCircle size={18} />
           <span className="font-semibold text-sm">Session Ended</span>
         </div>
@@ -338,10 +338,10 @@ export default function HistoryPage() {
         {top3.length > 0 && (
           <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-900/30 overflow-hidden">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3"><Trophy className="text-amber-500" /> Top 3 Players</h2>
-            <div className="flex justify-center items-end gap-4 sm:gap-8 h-48 px-4 mt-8">
+            <div className="flex justify-center items-end gap-2 sm:gap-8 min-h-[220px] pt-8 px-2 sm:px-4 mt-4">
               {/* Second Place */}
               {top3[1] && (
-                <div className="flex flex-col items-center flex-1 max-w-[120px]">
+                <div className="flex flex-col items-center flex-1 min-w-0 max-w-[120px]">
                   <div className="bg-gray-100 dark:bg-gray-800 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-xl relative border-t-4 border-slate-400">
                     <Medal className="text-slate-400 absolute -top-5" size={28} />
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-slate-400 to-slate-500 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">
@@ -356,7 +356,7 @@ export default function HistoryPage() {
               )}
               {/* First Place */}
               {top3[0] && (
-                <div className="flex flex-col items-center flex-1 max-w-[140px] z-10">
+                <div className="flex flex-col items-center flex-1 min-w-0 max-w-[140px] z-10">
                   <div className="bg-amber-50 dark:bg-amber-900/20 w-full pt-6 pb-3 px-2 flex flex-col items-center rounded-t-xl relative border-t-4 border-amber-400 shadow-lg">
                     <Trophy className="text-amber-500 absolute -top-6" size={36} />
                     <div className="w-12 h-12 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white flex items-center justify-center font-bold text-base shadow-lg mb-2 ring-4 ring-amber-400/20 overflow-hidden">
@@ -371,7 +371,7 @@ export default function HistoryPage() {
               )}
               {/* Third Place */}
               {top3[2] && (
-                <div className="flex flex-col items-center flex-1 max-w-[120px]">
+                <div className="flex flex-col items-center flex-1 min-w-0 max-w-[120px]">
                   <div className="bg-gray-100 dark:bg-gray-800 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-xl relative border-t-4 border-orange-700">
                     <Award className="text-orange-700 absolute -top-5" size={28} />
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-700 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">
@@ -652,17 +652,17 @@ export default function HistoryPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowCongrats(false)}>
           <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-1 rounded-3xl animate-slide-up" onClick={e => e.stopPropagation()}>
             <div className="bg-white dark:bg-gray-900 rounded-[22px] p-8 max-w-sm w-full text-center relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100/20 to-transparent"></div>
-              <Medal size={80} className="mx-auto text-amber-500 mb-6 drop-shadow-lg" />
-              <h2 className="text-4xl font-black mb-2 bg-gradient-to-br from-amber-500 to-orange-600 bg-clip-text text-transparent">
+              <div className="pointer-events-none absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100/20 to-transparent"></div>
+              <Medal size={80} className="mx-auto text-amber-500 mb-6 drop-shadow-lg relative z-10" />
+              <h2 className="text-4xl font-black mb-2 bg-gradient-to-br from-amber-500 to-orange-600 bg-clip-text text-transparent relative z-10">
                 Congratulations!
               </h2>
-              <p className="text-xl font-medium text-gray-600 dark:text-gray-300 mb-8">
+              <p className="text-xl font-medium text-gray-600 dark:text-gray-300 mb-8 relative z-10">
                 You finished in <strong className="text-gray-900 dark:text-white text-2xl">#{congratsRank}</strong> place!
               </p>
               <button 
                 onClick={() => setShowCongrats(false)}
-                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-lg rounded-xl shadow-xl shadow-orange-500/20 transition-all"
+                className="relative z-10 w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-lg rounded-xl shadow-xl shadow-orange-500/20 transition-all"
               >
                 Awesome!
               </button>

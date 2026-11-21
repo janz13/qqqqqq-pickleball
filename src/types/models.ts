@@ -148,6 +148,7 @@ export interface Session {
   announcementTimestamp?: number;
   sessionType?: SessionType;
   tournamentState?: TournamentState;
+  customBatches?: { teamA: string[]; teamB: string[] }[];
 }
 
 export interface ProposedMatch {

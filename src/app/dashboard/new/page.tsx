@@ -95,6 +95,35 @@ export default function NewSessionPage() {
                 </div>
               ))}
             </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCustomNames(prev => !prev)}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {showCustomNames ? 'Hide custom court names' : 'Customize court names'}
+              </button>
+              {showCustomNames && (
+                <div className="mt-3 grid grid-cols-2 gap-2 animate-fade-in">
+                  {Array.from({ length: courtsCount }).map((_, idx) => (
+                    <input
+                      key={idx}
+                      type="text"
+                      value={courtNames[idx] ?? `Court ${idx + 1}`}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCourtNames(prev => prev.map((c, i) => (i === idx ? val : c)));
+                      }}
+                      aria-label={`Court ${idx + 1} name`}
+                      placeholder={`Court ${idx + 1}`}
+                      maxLength={30}
+                      className="px-3 py-2 text-sm font-semibold rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3">

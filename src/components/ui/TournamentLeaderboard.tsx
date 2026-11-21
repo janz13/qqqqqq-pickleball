@@ -103,10 +103,10 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
     <div className="flex flex-col gap-8 w-full max-w-5xl mx-auto animate-slide-up">
       {/* ─── Top 3 Podium ─── */}
       {top3.length > 0 && (
-        <div className="flex justify-center items-end gap-3 sm:gap-6 h-56 px-4 mt-6">
+        <div className="flex justify-center items-end gap-2 sm:gap-6 min-h-[260px] pt-8 px-2 sm:px-4 mt-4">
           {/* Second Place */}
           {top3[1] && (
-            <div className="flex flex-col items-center flex-1 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="flex flex-col items-center flex-1 min-w-0 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <div className="bg-white dark:bg-gray-900 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-sm">
                 <Medal className="text-slate-400 absolute -top-5 drop-shadow-md" size={32} />
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-slate-400 to-slate-500 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">
@@ -131,7 +131,7 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
 
           {/* First Place */}
           {top3[0] && (
-            <div className="flex flex-col items-center flex-1 max-w-[160px] z-10 animate-slide-up">
+            <div className="flex flex-col items-center flex-1 min-w-0 max-w-[160px] z-10 animate-slide-up">
               <div className="bg-white dark:bg-gray-900 w-full pt-5 pb-3 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-md">
                 <Trophy className="text-yellow-500 absolute -top-6 drop-shadow-lg" size={40} />
                 <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 text-white flex items-center justify-center font-bold text-lg shadow-lg mb-2 overflow-hidden ring-4 ring-yellow-50 dark:ring-yellow-900/30">
@@ -156,7 +156,7 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
 
           {/* Third Place */}
           {top3[2] && (
-            <div className="flex flex-col items-center flex-1 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <div className="flex flex-col items-center flex-1 min-w-0 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.2s' }}>
               <div className="bg-white dark:bg-gray-900 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-sm">
                 <Award className="text-orange-400 absolute -top-5 drop-shadow-md" size={32} />
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-300 to-orange-400 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">

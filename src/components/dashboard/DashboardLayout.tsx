@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { SessionType } from '@/types/models';
-import { LayoutDashboard, Users, Trophy, Settings, Megaphone, ClipboardList, LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Users, Trophy, Settings, Megaphone, ClipboardList, LucideIcon, AlertTriangle, X } from 'lucide-react';
 import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
@@ -22,15 +22,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const session = useStore(state => state.session);
   const players = useStore(state => state.players);
   const matches = useStore(state => state.matches);
+  const syncError = useStore(state => state.syncError);
+  const clearSyncError = useStore(state => state.clearSyncError);
   const endSession = useStore(state => state.endSession);
   const router = useRouter();
 
-  const handleEndSession = () => {
+  const handleEndSession = async () => {
     const sid = session?.id;
-    router.push('/history/' + sid);
-    setTimeout(() => {
-      endSession();
-    }, 100);
+    await endSession();
+    if (sid) {
+      router.push('/history/' + sid);
+    } else {
+      router.push('/');
+    }
   };
 
   const isTournament = session?.sessionType && session.sessionType !== SessionType.OPEN_PLAY;
@@ -47,7 +51,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className="flex h-screen overflow-hidden bg-transparent">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 glass dark:glass-dark m-4 mr-0 rounded-2xl overflow-hidden z-10 animate-fade-in">
+      <aside className="hidden lg:flex flex-col w-64 glass dark:glass-dark m-4 mr-0 rounded-2xl overflow-hidden z-10 animate-fade-in">
         <div className="p-6 border-b border-slate-200/50 dark:border-slate-700/50">
           <div className="flex justify-between items-start gap-2 mb-3">
             <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 break-words flex-1 min-w-0">
@@ -108,14 +112,37 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden animate-fade-in z-0 relative">
-        {/* Mobile Header */}
-        <div className="md:hidden p-4 flex flex-col gap-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
+        {syncError && (
+          <div role="alert" className="mx-4 mt-4 lg:mx-8 bg-rose-50 dark:bg-rose-950/90 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 px-4 py-3 rounded-2xl shadow-md flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle size={18} className="shrink-0" />
+              <span>{syncError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearSyncError}
+              aria-label="Dismiss sync error"
+              className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors shrink-0"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {/* Mobile & Tablet Header */}
+        <div className="lg:hidden p-4 flex flex-col gap-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10 sticky top-0">
           <div className="flex justify-between items-start gap-2">
             <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 break-words flex-1 min-w-0">
               {session?.name || 'Pickleball Session'}
             </h1>
-            <div className="shrink-0 pt-1">
+            <div className="shrink-0 flex items-center gap-2 pt-0.5">
               <ThemeToggle />
+              <button
+                type="button"
+                onClick={() => setShowEndSession(true)}
+                className="px-2.5 py-1.5 bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 rounded-lg text-xs font-bold transition-colors"
+              >
+                End
+              </button>
             </div>
           </div>
           {session?.joinCode && (
@@ -136,13 +163,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           )}
         </div>
         
-        <div className="max-w-7xl w-full mx-auto p-4 md:p-8 pb-24 md:pb-0">
+        <div className="max-w-7xl w-full mx-auto p-4 lg:p-8 pb-24 lg:pb-8">
           {children(activeTab)}
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass dark:glass-dark rounded-t-2xl rounded-b-none border-t border-white/20 pb-safe z-50">
+      {/* Mobile & Tablet Bottom Navigation */}
+      <nav aria-label="Dashboard navigation" className="lg:hidden fixed bottom-0 left-0 right-0 glass dark:glass-dark rounded-t-2xl rounded-b-none border-t border-white/20 pb-safe z-50">
         <div className="flex justify-around items-center h-16 px-2">
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -151,6 +178,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
+                aria-label={tab.label}
+                title={tab.label}
                 className="flex flex-col items-center justify-center w-full h-full space-y-1"
               >
                 <div className={`p-1.5 rounded-full transition-all duration-200 ${isActive ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>

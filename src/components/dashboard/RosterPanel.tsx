@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
-import { PlayerStatus, createPlayer, Player } from '@/types/models';
+import { PlayerStatus, CourtStatus, createPlayer, Player } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { RosterRatioBanner } from '@/components/ui/RosterRatioBanner';
 import { Plus, Search, Upload, Download, FileUp, RefreshCw, Check } from 'lucide-react';
@@ -13,7 +13,7 @@ import { Plus, Search, Upload, Download, FileUp, RefreshCw, Check } from 'lucide
  
 
 export default function RosterPanel() {
-  const { players, addPlayer, updatePlayer, updatePlayerStatus, roster, clearRoster, syncCloudRoster, currentUser, session } = useStore();
+  const { players, courts, matches, addPlayer, addPlayers, updatePlayer, updatePlayerStatus, removePlayer, roster, clearRoster, syncCloudRoster, currentUser, session } = useStore();
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerSkill, setNewPlayerSkill] = useState(3);
   const [checkInNow, setCheckInNow] = useState(true);
@@ -46,30 +46,44 @@ export default function RosterPanel() {
       const text = event.target?.result as string;
       if (!text) return;
 
-      const lines = text.split('\n');
-      const currentPlayers = useStore.getState().players;
-      const addedNames = new Set(currentPlayers.map(p => p.name.trim().toLowerCase()));
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length === 0) return;
 
-      lines.slice(1).forEach(line => {
-        const [name, skill] = line.split(',');
-        if (name && name.trim()) {
-          const cleanName = name.trim();
-          const nameKey = cleanName.toLowerCase();
-          if (!addedNames.has(nameKey)) {
-            addedNames.add(nameKey);
-            const skillLevel = skill ? parseFloat(skill.trim()) : 3;
-            addPlayer(createPlayer({
-              id: 'p_' + Math.random().toString(36).substr(2, 9),
-              name: cleanName,
-              skillLevel: isNaN(skillLevel) ? 3 : skillLevel,
-              queuedAtEpochMs: Date.now() - (Math.random() * 60000),
-              joinedSessionAtEpochMs: Date.now(),
-              isLatecomer: false,
-              status: PlayerStatus.AVAILABLE
-            }));
-          }
-        }
+      const hasHeader = /^\s*["']?name["']?\s*(,|$)/i.test(lines[0]);
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+
+      const currentState = useStore.getState();
+      const addedNames = new Set(currentState.players.map(p => p.name.trim().toLowerCase()));
+      const isSessionInProgress = currentState.matches.length > 0 || currentState.courts.some(c => c.status === CourtStatus.IN_PROGRESS);
+      const batchToAdd: Player[] = [];
+
+      dataLines.forEach((line, idx) => {
+        const parts = line.split(',');
+        const cleanName = (parts[0] || '').trim().replace(/^["']|["']$/g, '').trim();
+        if (!cleanName) return;
+
+        const nameKey = cleanName.toLowerCase();
+        if (addedNames.has(nameKey)) return;
+        addedNames.add(nameKey);
+
+        const rawSkillStr = (parts[1] || '').trim().replace(/^["']|["']$/g, '').trim();
+        const parsedSkill = rawSkillStr ? parseFloat(rawSkillStr) : 3;
+        const clampedSkill = isNaN(parsedSkill) ? 3 : Math.min(5, Math.max(1, parsedSkill));
+
+        batchToAdd.push(createPlayer({
+          id: 'p_' + Math.random().toString(36).substr(2, 9),
+          name: cleanName,
+          skillLevel: clampedSkill,
+          queuedAtEpochMs: Date.now() - Math.max(0, (dataLines.length - idx) * 10),
+          joinedSessionAtEpochMs: Date.now(),
+          isLatecomer: isSessionInProgress,
+          status: PlayerStatus.AVAILABLE
+        }));
       });
+
+      if (batchToAdd.length > 0) {
+        addPlayers(batchToAdd);
+      }
       if (csvInputRef.current) csvInputRef.current.value = '';
     };
     reader.readAsText(file);
@@ -86,13 +100,14 @@ export default function RosterPanel() {
     }
     setNameError('');
 
+    const isSessionInProgress = matches.length > 0 || courts.some(c => c.status === CourtStatus.IN_PROGRESS);
     addPlayer(createPlayer({
       id: 'p_' + Math.random().toString(36).substr(2, 9),
       name: newPlayerName.trim(),
       skillLevel: newPlayerSkill,
       queuedAtEpochMs: Date.now(),
       joinedSessionAtEpochMs: Date.now(),
-      isLatecomer: players.length > 8,
+      isLatecomer: isSessionInProgress,
       status: checkInNow ? PlayerStatus.AVAILABLE : PlayerStatus.CHECKED_OUT
     }));
     
@@ -106,13 +121,14 @@ export default function RosterPanel() {
       if (players.some(p => p.name.toLowerCase() === savedPlayer.name.toLowerCase())) {
           return;
       }
+      const isSessionInProgress = matches.length > 0 || courts.some(c => c.status === CourtStatus.IN_PROGRESS);
       addPlayer({
           ...savedPlayer,
           id: generateId(), // new session ID
           status: PlayerStatus.AVAILABLE,
           queuedAtEpochMs: getNow(),
           joinedSessionAtEpochMs: getNow(),
-          isLatecomer: players.length > 8,
+          isLatecomer: isSessionInProgress,
           currentCourtId: null,
           sessionGamesPlayed: 0,
           sessionWins: 0,
@@ -211,14 +227,15 @@ export default function RosterPanel() {
   return (
     <div className="space-y-6 animate-slide-up relative">
       <RosterRatioBanner />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-6">
             <form onSubmit={handleAddPlayer} className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-6 rounded-2xl flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight">Add Player</h2>
               
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 ml-1">Name</label>
+                <label htmlFor="add-player-name" className="text-sm font-medium text-gray-600 dark:text-gray-400 ml-1">Name</label>
                 <input
+                  id="add-player-name"
                   type="text"
                   value={newPlayerName}
                   onChange={(e) => { setNewPlayerName(e.target.value); setNameError(''); }}
@@ -264,10 +281,11 @@ export default function RosterPanel() {
 
             <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-6 rounded-2xl flex flex-col gap-4">
               <h2 className="text-lg font-bold tracking-tight">Bulk Import</h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
+                  type="button"
                   onClick={() => csvInputRef.current?.click()}
-                  className="flex-1 py-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 min-w-[110px] py-2 px-3 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
                 >
                   <FileUp size={16} /> Import CSV
                 </button>
@@ -279,8 +297,9 @@ export default function RosterPanel() {
                   onChange={handleCsvImport}
                 />
                 <button
+                  type="button"
                   onClick={handleDownloadTemplate}
-                  className="flex-1 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 min-w-[110px] py-2 px-3 bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
                 >
                   <Download size={16} /> Template
                 </button>
@@ -308,8 +327,9 @@ export default function RosterPanel() {
                         </button>
                       )}
                       <button 
+                        type="button"
                         onClick={() => confirm('Clear all saved players from this device?') && clearRoster()} 
-                        className="text-xs text-red-500 hover:text-red-600 font-semibold transition-colors"
+                        className="min-h-[36px] px-2 text-xs text-red-500 hover:text-red-600 font-semibold transition-colors"
                       >
                         Clear
                       </button>
@@ -356,7 +376,7 @@ export default function RosterPanel() {
             )}
         </div>
 
-        <div className="md:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-between bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 p-2 rounded-2xl">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -365,6 +385,7 @@ export default function RosterPanel() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search players..."
+                aria-label="Search players"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-transparent border-none focus:ring-0 outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-400"
               />
             </div>
@@ -373,7 +394,7 @@ export default function RosterPanel() {
                 <button
                   key={f}
                   onClick={() => setFilter(f as 'ALL' | 'AVAILABLE' | 'PLAYING' | 'RESTING' | 'CHECKED_OUT')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                  className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
                     filter === f 
                       ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' 
                       : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
@@ -396,9 +417,10 @@ export default function RosterPanel() {
                     ) : (
                         <select
                           value={player.status}
+                          aria-label={`Status for ${player.name}`}
                           onChange={(e) => updatePlayerStatus(player.id, e.target.value as PlayerStatus)}
                           onClick={e => e.stopPropagation()}
-                          className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md py-1 px-2 cursor-pointer shadow-sm outline-none focus:ring-1 focus:ring-blue-500"
+                          className="min-h-[36px] text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md py-1 px-2 cursor-pointer shadow-sm outline-none focus:ring-1 focus:ring-blue-500"
                         >
                           <option value={PlayerStatus.AVAILABLE}>Available</option>
                           {player.status === PlayerStatus.PLAYING && <option value={PlayerStatus.PLAYING} disabled>Playing</option>}
@@ -494,18 +516,31 @@ export default function RosterPanel() {
                       </div>
                       
                   </div>
-                  <div className="mt-6 flex gap-3 justify-end">
-                      <button onClick={() => setEditingPlayer(null)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium">Cancel</button>
-                      <button 
-                        disabled={!editingPlayer.name.trim() || players.some(p => p.id !== editingPlayer.id && p.name.trim().toLowerCase() === editingPlayer.name.trim().toLowerCase())}
-                        onClick={() => { 
-                          updatePlayer(editingPlayer); 
-                          setEditingPlayer(null); 
-                        }} 
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  <div className="mt-6 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        disabled={players.find(p => p.id === editingPlayer.id)?.status === PlayerStatus.PLAYING}
+                        onClick={() => {
+                          removePlayer(editingPlayer.id);
+                          setEditingPlayer(null);
+                        }}
+                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 dark:text-rose-400 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        Save Changes
+                        Remove Player
                       </button>
+                      <div className="flex gap-3">
+                        <button onClick={() => setEditingPlayer(null)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium">Cancel</button>
+                        <button 
+                          disabled={!editingPlayer.name.trim() || players.some(p => p.id !== editingPlayer.id && p.name.trim().toLowerCase() === editingPlayer.name.trim().toLowerCase())}
+                          onClick={() => { 
+                            updatePlayer(editingPlayer); 
+                            setEditingPlayer(null); 
+                          }} 
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
                   </div>
               </div>
           </div>,

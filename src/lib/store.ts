@@ -1,9 +1,31 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer, TournamentPair } from '@/types/models';
 import { buildNextBatches, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 import { initializeTournament } from '@/engine/tournament-engine';
+
+import { createClient } from './supabase';
+
+// Module-level handles shared between endSession() and cloud sync listener
+let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let isSyncingFromStorage = false;
+
+function mergePlayerIntoRoster(roster: Player[], player: Player): Player[] {
+  const nameKey = player.name.trim().toLowerCase();
+  const existing = roster.find(p => p.name.trim().toLowerCase() === nameKey);
+  if (existing) {
+    return roster.map(p => p.id === existing.id ? {
+      ...player,
+      id: p.id,
+      allTimeWins: Math.max(p.allTimeWins, player.allTimeWins),
+      allTimeLosses: Math.max(p.allTimeLosses, player.allTimeLosses),
+      allTimeGamesPlayed: Math.max(p.allTimeGamesPlayed, player.allTimeGamesPlayed),
+      allTimeSessionsPlayed: Math.max(p.allTimeSessionsPlayed, player.allTimeSessionsPlayed)
+    } : p);
+  }
+  return [...roster, player];
+}
 
 interface StoreState {
   currentUser: { email: string; id: string } | null;
@@ -15,6 +37,8 @@ interface StoreState {
   courts: Court[];
   matches: Match[];
   session: Session | null;
+  syncError: string | null;
+  clearSyncError: () => void;
   
   roster: Player[];
   rostersByOwner: Record<string, Player[]>;
@@ -26,6 +50,7 @@ interface StoreState {
   setMatches: (matches: Match[]) => void;
   
   addPlayer: (player: Player) => void;
+  addPlayers: (players: Player[]) => void;
   updatePlayer: (player: Player) => void;
   removePlayer: (id: string) => void;
   
@@ -44,7 +69,7 @@ interface StoreState {
   unlockPartner: (playerId: string) => void;
   updatePlayerSkill: (playerId: string, skillLevel: number) => void;
   sessionHistory: {session: Session, players: Player[], courts: Court[], matches: Match[], endedAtEpochMs: number}[];
-  endSession: () => void;
+  endSession: () => Promise<void>;
   clearHistory: () => void;
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
   startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => void;
@@ -116,6 +141,8 @@ export const useStore = create<StoreState>()(
       sessionHistory: [],
       roster: [],
       rostersByOwner: {},
+      syncError: null,
+      clearSyncError: () => set({ syncError: null }),
       
       ttsEnabled: false,
       ttsVoice: null,
@@ -158,6 +185,45 @@ export const useStore = create<StoreState>()(
           return { players: [...state.players, toAdd] };
         });
         get().saveToRoster(player);
+      },
+      addPlayers: (newPlayers) => {
+        if (!newPlayers.length) return;
+        set((state) => {
+          const seenIds = new Set(state.players.map(p => p.id));
+          const seenNames = new Set(state.players.map(p => p.name.trim().toLowerCase()));
+          const added: Player[] = [];
+          let updatedRoster = state.roster;
+
+          for (const raw of newPlayers) {
+            const nameKey = raw.name.trim().toLowerCase();
+            if (!nameKey || seenIds.has(raw.id) || seenNames.has(nameKey)) continue;
+            seenIds.add(raw.id);
+            seenNames.add(nameKey);
+
+            let toAdd = raw;
+            if (raw.isLatecomer) {
+              const target = catchUpTargetForNewPlayer(state.players);
+              toAdd = {
+                ...raw,
+                catchUpTargetGames: target,
+                hasCaughtUp: raw.sessionGamesPlayed >= target,
+              };
+            }
+            added.push(toAdd);
+            updatedRoster = mergePlayerIntoRoster(updatedRoster, toAdd);
+          }
+
+          if (added.length === 0) return state;
+          const nextRostersByOwner = state.currentUser && !state.currentUser.id.startsWith('guest_')
+            ? { ...(state.rostersByOwner || {}), [state.currentUser.id]: updatedRoster }
+            : state.rostersByOwner;
+
+          return {
+            players: [...state.players, ...added],
+            roster: updatedRoster,
+            rostersByOwner: nextRostersByOwner
+          };
+        });
       },
       updatePlayer: (player) => {
         const pre = get();
@@ -212,24 +278,7 @@ export const useStore = create<StoreState>()(
       removePlayer: (id) => set((state) => ({ players: state.players.filter(p => p.id !== id) })),
       
       saveToRoster: (player) => set((state) => {
-        const existing = state.roster.find(p => p.name.toLowerCase() === player.name.toLowerCase());
-        let newRoster: Player[];
-        
-        if (existing) {
-          // If the player exists, we merge, BUT we MUST preserve all-time stats!
-          // Quick Add passes a new player object with 0s for all-time stats.
-          newRoster = state.roster.map(p => p.id === existing.id ? { 
-            ...player, // Take new properties (like skill level update)
-            id: p.id,  // Keep original ID
-            allTimeWins: Math.max(p.allTimeWins, player.allTimeWins),
-            allTimeLosses: Math.max(p.allTimeLosses, player.allTimeLosses),
-            allTimeGamesPlayed: Math.max(p.allTimeGamesPlayed, player.allTimeGamesPlayed),
-            allTimeSessionsPlayed: Math.max(p.allTimeSessionsPlayed, player.allTimeSessionsPlayed)
-          } : p);
-        } else {
-          newRoster = [...state.roster, player];
-        }
-        
+        const newRoster = mergePlayerIntoRoster(state.roster, player);
         if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
           return { 
             roster: newRoster, 
@@ -256,7 +305,14 @@ export const useStore = create<StoreState>()(
         }
         return { courts: [...state.courts, { ...court, label }] };
       }),
-      updateCourt: (court) => set((state) => ({ courts: state.courts.map(c => c.id === court.id ? court : c) })),
+      updateCourt: (court) => set((state) => ({
+        courts: state.courts.map(c => c.id === court.id ? court : c),
+        matches: state.matches.map(m =>
+          (m.courtId === court.id && m.endedAtEpochMs == null)
+            ? { ...m, courtLabel: court.label }
+            : m
+        )
+      })),
       removeCourt: (id) => set((state) => {
         const court = state.courts.find(c => c.id === id);
         if (court && court.currentMatchId) {
@@ -456,7 +512,8 @@ export const useStore = create<StoreState>()(
         return {
           matches: [...state.matches, newMatch],
           players: newPlayers,
-          courts: newCourts
+          courts: newCourts,
+          session: state.session?.customBatches ? { ...state.session, customBatches: undefined } : state.session
         };
       }),
 
@@ -497,50 +554,32 @@ export const useStore = create<StoreState>()(
         players: state.players.map(p => p.id === playerId ? { ...p, skillLevel } : p)
       })),
 
-      endSession: () => {
+      endSession: async () => {
         const state = get();
         if (!state.session) return;
 
-        // Force an immediate cloud update to broadcast that the session has ended
-        if (typeof window !== 'undefined' && state.currentUser) {
-          try {
-            import('./supabase').then(({ createClient }) => {
-              const supabase = createClient();
-              if (supabase) {
-                 const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
-                 const finalState = {
-                   players: sanitizePlayers(state.players),
-                   courts: state.courts,
-                   matches: state.matches,
-                   session: { ...state.session, isActive: false },
-                   endedAtEpochMs: Date.now()
-                 };
-                 supabase.from('sessions').update({ 
-                   is_active: false,
-                   state_json: finalState,
-                   updated_at: new Date().toISOString()
-                 }).eq('id', state.session!.id).then(() => {
-                   if (state.currentUser && !state.currentUser.id.startsWith('guest_')) {
-                     get().syncCloudRoster(state.currentUser.id);
-                   }
-                 });
-              }
-            }).catch(e => console.error("Failed to load supabase", e));
-          } catch (e) {
-            console.error("Failed to broadcast session end", e);
-          }
+        // Cancel any queued debounced upsert so it cannot race and re-activate the session
+        if (pendingSyncTimer) {
+          clearTimeout(pendingSyncTimer);
+          pendingSyncTimer = null;
         }
 
-        set((state) => {
-          if (!state.session) return state;
+        const endedSession = { ...state.session, isActive: false };
+        const playersSnapshot = state.players;
+        const courtsSnapshot = state.courts;
+        const matchesSnapshot = state.matches;
+        const userSnapshot = state.currentUser;
+
+        set((cur) => {
+          if (!cur.session) return cur;
           const historyItem = {
-            session: state.session,
-            players: state.players,
-            courts: state.courts,
-            matches: state.matches,
+            session: { ...cur.session, isActive: false },
+            players: cur.players,
+            courts: cur.courts,
+            matches: cur.matches,
             endedAtEpochMs: Date.now()
           };
-          const newHistory = [...state.sessionHistory, historyItem].slice(-50);
+          const newHistory = [...cur.sessionHistory, historyItem].slice(-50);
           return {
             sessionHistory: newHistory,
             session: null,
@@ -551,6 +590,35 @@ export const useStore = create<StoreState>()(
             matches: []
           };
         });
+
+        // Await cloud inactivation so callers can navigate safely without aborting the request
+        if (typeof window !== 'undefined' && userSnapshot) {
+          try {
+            const supabase = createClient();
+            if (supabase) {
+              const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
+              const finalState = {
+                players: sanitizePlayers(playersSnapshot),
+                courts: courtsSnapshot,
+                matches: matchesSnapshot,
+                session: endedSession,
+                endedAtEpochMs: Date.now()
+              };
+              const { error } = await supabase.from('sessions').update({
+                is_active: false,
+                state_json: finalState,
+                updated_at: new Date().toISOString()
+              }).eq('id', endedSession.id);
+              if (error) {
+                console.error("Failed to broadcast session end:", error);
+              } else if (!userSnapshot.id.startsWith('guest_')) {
+                await get().syncCloudRoster(userSnapshot.id);
+              }
+            }
+          } catch (e) {
+            console.error("Failed to broadcast session end", e);
+          }
+        }
       },
 
       clearHistory: () => set({ sessionHistory: [] }),
@@ -703,7 +771,7 @@ export const useStore = create<StoreState>()(
 
         const newMatches = state.matches.map(m => 
           m.id === matchId 
-            ? { ...m, winner: newWinner } 
+            ? { ...m, winner: newWinner, scoreA: m.scoreB, scoreB: m.scoreA } 
             : m
         );
 
@@ -723,6 +791,7 @@ export const useStore = create<StoreState>()(
               allTimeWins: Math.max(0, p.allTimeWins + winDelta),
               sessionLosses: Math.max(0, p.sessionLosses + lossDelta),
               allTimeLosses: Math.max(0, p.allTimeLosses + lossDelta),
+              lastMatchResult: (wasOnOldWinningTeam ? 'lost' : 'won') as 'won' | 'lost',
             };
           }
           return p;
@@ -924,7 +993,32 @@ export const useStore = create<StoreState>()(
         );
 
         const batches = buildNextBatches(eligiblePlayers, openCourts, mode, activePlayerIds);
-        return batches.map(b => pairFour(b));
+        const defaultBatches = batches.map(b => pairFour(b));
+        const customBatches = state.session?.customBatches;
+        if (!customBatches || customBatches.length === 0) {
+          return defaultBatches;
+        }
+
+        const eligibleMap = new Map(eligiblePlayers.map(p => [p.id, p]));
+        const claimedIds = new Set<string>();
+        const overlaid: ProposedMatch[] = [];
+        for (let i = 0; i < defaultBatches.length; i++) {
+          const cb = customBatches[i];
+          if (cb && cb.teamA.length === 2 && cb.teamB.length === 2) {
+            const ids = [...cb.teamA, ...cb.teamB];
+            const unique = new Set(ids);
+            if (unique.size === 4 && ids.every(id => eligibleMap.has(id) && !claimedIds.has(id))) {
+              ids.forEach(id => claimedIds.add(id));
+              overlaid.push({
+                teamA: cb.teamA.map(id => eligibleMap.get(id)!),
+                teamB: cb.teamB.map(id => eligibleMap.get(id)!)
+              });
+              continue;
+            }
+          }
+          overlaid.push(defaultBatches[i]);
+        }
+        return overlaid;
       },
 
       broadcastAnnouncement: (text: string) => set((state) => {
@@ -940,6 +1034,34 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'pickleball-storage',
+      storage: createJSONStorage(() => {
+        if (typeof window === 'undefined') {
+          throw new Error('localStorage unavailable during SSR');
+        }
+        return {
+          getItem: (name: string) => window.localStorage.getItem(name),
+          setItem: (name: string, value: string) => {
+            if (
+              isSyncingFromStorage ||
+              window.location.pathname.startsWith('/session/') ||
+              window.location.pathname.startsWith('/history/')
+            ) {
+              return;
+            }
+            window.localStorage.setItem(name, value);
+          },
+          removeItem: (name: string) => {
+            if (
+              isSyncingFromStorage ||
+              window.location.pathname.startsWith('/session/') ||
+              window.location.pathname.startsWith('/history/')
+            ) {
+              return;
+            }
+            window.localStorage.removeItem(name);
+          },
+        };
+      }),
       partialize: (state) => {
         // To prevent QuotaExceededError, we strip the giant base64 photoUrls from EVERYTHING
         const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
@@ -949,8 +1071,10 @@ export const useStore = create<StoreState>()(
           players: sanitizePlayers(h.players)
         })).slice(-50) : [];
 
+        const persistedCore = { ...state };
+        delete (persistedCore as Partial<StoreState>).syncError;
         return {
-          ...state,
+          ...persistedCore,
           players: sanitizePlayers(state.players),
           sessionHistory: historySansPhotos
         };
@@ -980,51 +1104,118 @@ export const useStore = create<StoreState>()(
   )
 );
 
-import { createClient } from './supabase';
-
 if (typeof window !== 'undefined') {
-  let syncTimeout: any;
+  let isUploading = false;
+  let pendingUpload = false;
 
-  useStore.subscribe((state) => {
+  const flushCloudUpload = async () => {
+    const state = useStore.getState();
+    if (!window.location.pathname.startsWith('/dashboard')) return;
+    if (!state.session?.isActive || !state.currentUser) return;
+    if (state.session.ownerUid !== state.currentUser.id) return;
+
+    const supabase = createClient();
+    if (!supabase) return;
+
+    if (isUploading) {
+      pendingUpload = true;
+      return;
+    }
+
+    isUploading = true;
+    try {
+      do {
+        pendingUpload = false;
+        const latest = useStore.getState();
+        if (!latest.session?.isActive || !latest.currentUser) break;
+        const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
+        const payload = {
+          players: sanitizePlayers(latest.players),
+          courts: latest.courts,
+          matches: latest.matches,
+          session: latest.session
+        };
+        const { error } = await supabase.from('sessions').upsert({
+          id: latest.session.id,
+          join_code: latest.session.joinCode,
+          owner_uid: latest.session.ownerUid,
+          is_active: latest.session.isActive,
+          state_json: payload,
+          updated_at: new Date().toISOString()
+        });
+
+        if (error) {
+          console.error("Supabase Sync Error:", error);
+          useStore.setState({ syncError: `Cloud Sync Error: ${error.message}` });
+        } else if (useStore.getState().syncError) {
+          useStore.setState({ syncError: null });
+        }
+      } while (pendingUpload);
+    } finally {
+      isUploading = false;
+    }
+  };
+
+  useStore.subscribe((state, prevState) => {
+    if (isSyncingFromStorage) return;
+
+    // Only react to actual session/match/court/player state mutations
+    const domainChanged =
+      state.session !== prevState.session ||
+      state.players !== prevState.players ||
+      state.courts !== prevState.courts ||
+      state.matches !== prevState.matches;
+    if (!domainChanged) return;
+
     // CRITICAL GUARD #1: Only the active organizer dashboard (/dashboard/...) is allowed to upload state to Supabase.
     // NEVER upload from player view (/session/...), TV view, or history pages!
     if (!window.location.pathname.startsWith('/dashboard')) return;
 
     // Only upload if they are the active organizer running a session
     if (!state.session?.isActive || !state.currentUser) return;
-    
+
     // CRITICAL GUARD #2: Only the actual owner of the session should upload state.
     // If a viewer's phone echoes state back, it overwrites the DB with stale data and causes the court glitch.
     if (state.session.ownerUid !== state.currentUser.id) return;
-    
-    // Check if Supabase is connected
-    const supabase = createClient();
-    if (!supabase) return;
 
-    // Debounce the upload to prevent spamming the database
-    clearTimeout(syncTimeout);
-    syncTimeout = setTimeout(async () => {
-       // Strip photos to keep the payload size small for realtime transit
-       const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
-       const payload = {
-         players: sanitizePlayers(state.players),
-         courts: state.courts,
-         matches: state.matches,
-         session: state.session
-       };
-       const { error } = await supabase.from('sessions').upsert({
-         id: state.session!.id,
-         join_code: state.session!.joinCode,
-         owner_uid: state.session!.ownerUid,
-         is_active: state.session!.isActive,
-         state_json: payload,
-         updated_at: new Date().toISOString()
-       });
-       
-       if (error) {
-         console.error("Supabase Sync Error:", error);
-         alert(`Cloud Sync Error: ${error.message}\nReal-time updates will not work until this is fixed.`);
-       }
-    }, 500);
+    // Debounce briefly (150ms) to coalesce rapid batch mutations while cutting sync lag
+    if (pendingSyncTimer) clearTimeout(pendingSyncTimer);
+    pendingSyncTimer = setTimeout(() => {
+      pendingSyncTimer = null;
+      void flushCloudUpload();
+    }, 150);
+  });
+
+  // Cross-tab organizer sync on same browser profile via localStorage events
+  window.addEventListener('storage', (e) => {
+    if (e.key !== 'pickleball-storage' || !e.newValue || e.newValue === e.oldValue) return;
+    if (!window.location.pathname.startsWith('/dashboard')) return;
+    try {
+      const parsed = JSON.parse(e.newValue);
+      const nextState = parsed?.state;
+      const curSession = useStore.getState().session;
+      if (nextState && curSession && nextState.session?.id === curSession.id) {
+        isSyncingFromStorage = true;
+        try {
+          const patch: Partial<StoreState> = {
+            session: nextState.session,
+            players: nextState.players ?? [],
+            courts: nextState.courts ?? [],
+            matches: nextState.matches ?? [],
+          };
+          if (Array.isArray(nextState.roster)) {
+            patch.roster = nextState.roster;
+          }
+          if (nextState.rostersByOwner && typeof nextState.rostersByOwner === 'object') {
+            patch.rostersByOwner = nextState.rostersByOwner;
+          }
+          useStore.setState(patch);
+        } finally {
+          isSyncingFromStorage = false;
+        }
+      }
+    } catch {
+      // Ignore malformed storage entries
+    }
   });
 }

@@ -8,8 +8,10 @@ import { CourtCard } from '@/components/ui/CourtCard';
 import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
 import { BracketTree, TournamentMatch as BracketMatch } from '@/components/ui/BracketTree';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
-import { Trophy, Clock, Flame, Users, CheckCircle2, PlayCircle, Award, Crown, Shield } from 'lucide-react';
+import Link from 'next/link';
+import { Trophy, Clock, Flame, Users, CheckCircle2, PlayCircle, Award, Crown, Shield, Megaphone, X, ArrowLeft } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
+import { priorityOrder } from '@/engine/queue-engine';
 
 interface CloudSessionState {
   session: Session | null;
@@ -24,6 +26,10 @@ export default function TVDisplayPage() {
   const code = (typeof rawCode === 'string' ? rawCode : Array.isArray(rawCode) ? rawCode[0] : '').toUpperCase();
   const { session, courts, players, matches } = useStore();
   const [time, setTime] = useState(new Date());
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEnded, setIsEnded] = useState(false);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<{ text: string; ts: number } | null>(null);
+  const seenAnnouncementTs = useRef<number | null>(null);
   const lastCloudTimestamp = useRef<string>('');
 
   useEffect(() => {
@@ -35,10 +41,12 @@ export default function TVDisplayPage() {
   useEffect(() => {
     let channel: { unsubscribe: () => void } | null = null;
     let isMounted = true;
-    
-    const applyCloudState = (stateJson: Partial<CloudSessionState> | null, updatedAt: string) => {
+    setIsLoading(true);
+    setIsEnded(false);
+
+    const applyCloudState = (stateJson: Partial<CloudSessionState> | null, updatedAt: string, forceEnded = false) => {
       if (!isMounted || !stateJson) return;
-      if (updatedAt && lastCloudTimestamp.current) {
+      if (!forceEnded && updatedAt && lastCloudTimestamp.current) {
         const newTime = new Date(updatedAt).getTime();
         const lastTime = new Date(lastCloudTimestamp.current).getTime();
         if (!isNaN(newTime) && !isNaN(lastTime) && newTime <= lastTime) {
@@ -52,21 +60,29 @@ export default function TVDisplayPage() {
         courts: stateJson.courts ?? [],
         matches: stateJson.matches ?? []
       });
+      setIsLoading(false);
     };
 
     const initCloud = async () => {
       const { createClient } = await import('@/lib/supabase');
       const supabase = createClient();
-      if (!supabase) return;
+      if (!supabase) {
+        if (isMounted) setIsLoading(false);
+        return;
+      }
 
       const { data } = await supabase
         .from('sessions')
-        .select('state_json, is_active, updated_at, join_code')
+        .select('id, state_json, is_active, updated_at, join_code')
         .ilike('join_code', code)
         .maybeSingle();
 
       if (data && isMounted) {
-        applyCloudState(data.state_json as Partial<CloudSessionState> | null, data.updated_at);
+        const ended = data.is_active === false || data.state_json?.session?.isActive === false;
+        applyCloudState(data.state_json as Partial<CloudSessionState> | null, data.updated_at, ended);
+        if (ended) setIsEnded(true);
+      } else if (isMounted) {
+        setIsLoading(false);
       }
 
       const canonicalCode = data?.join_code || code;
@@ -76,10 +92,14 @@ export default function TVDisplayPage() {
           schema: 'public',
           table: 'sessions',
           filter: `join_code=eq.${canonicalCode}`
-        }, (payload: { new?: { state_json?: Partial<CloudSessionState>; updated_at?: string } }) => {
+        }, (payload: { new?: { state_json?: Partial<CloudSessionState>; is_active?: boolean; updated_at?: string } }) => {
           const newData = payload.new;
-          if (newData?.state_json && isMounted) {
-            applyCloudState(newData.state_json, newData.updated_at || '');
+          if (newData && isMounted) {
+            const ended = newData.is_active === false || newData.state_json?.session?.isActive === false;
+            if (newData.state_json) {
+              applyCloudState(newData.state_json, newData.updated_at || '', ended);
+            }
+            if (ended) setIsEnded(true);
           }
         })
         .subscribe();
@@ -88,13 +108,15 @@ export default function TVDisplayPage() {
         if (!isMounted) return;
         const { data: pollData } = await supabase
           .from('sessions')
-          .select('state_json, updated_at')
+          .select('id, state_json, is_active, updated_at')
           .ilike('join_code', code)
           .maybeSingle();
         if (pollData && isMounted) {
-          applyCloudState(pollData.state_json as Partial<CloudSessionState> | null, pollData.updated_at);
+          const ended = pollData.is_active === false || pollData.state_json?.session?.isActive === false;
+          applyCloudState(pollData.state_json as Partial<CloudSessionState> | null, pollData.updated_at, ended);
+          if (ended) setIsEnded(true);
         }
-      }, 8000);
+      }, 4000);
 
       return () => clearInterval(pollInterval);
     };
@@ -107,12 +129,44 @@ export default function TVDisplayPage() {
     };
   }, [code]);
 
-  if (!session || session.joinCode?.toUpperCase() !== code) {
+  // Surface Organizer PA Announcements on Arena TV
+  useEffect(() => {
+    if (session?.currentAnnouncement && session.announcementTimestamp) {
+      if (session.announcementTimestamp !== seenAnnouncementTs.current) {
+        seenAnnouncementTs.current = session.announcementTimestamp;
+        setActiveAnnouncement({ text: session.currentAnnouncement, ts: session.announcementTimestamp });
+        const t = setTimeout(() => setActiveAnnouncement(null), 12000);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [session?.currentAnnouncement, session?.announcementTimestamp]);
+
+  if (isLoading && (!session || session.joinCode?.toUpperCase() !== code)) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">
         <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-6"></div>
         <div className="text-3xl font-black mb-2">Connecting TV Display...</div>
         <div className="text-slate-400 font-mono text-lg">Session Code: {code}</div>
+      </div>
+    );
+  }
+
+  if (!session || session.joinCode?.toUpperCase() !== code) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-center">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-10 max-w-md w-full space-y-5 shadow-2xl">
+          <h1 className="text-3xl font-black text-white">Session Not Found</h1>
+          <p className="text-slate-400 text-base">
+            No active session found for code: <span className="font-mono font-black text-white">{code}</span>
+          </p>
+          <Link
+            href="/"
+            className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base inline-flex items-center justify-center gap-2 transition-colors"
+          >
+            <ArrowLeft size={18} />
+            Back to Home
+          </Link>
+        </div>
       </div>
     );
   }
@@ -197,9 +251,11 @@ export default function TVDisplayPage() {
     return match.status === 'IN_PROGRESS' ? 'Court in Use' : 'Court TBD';
   };
 
-  // Champion detection for COMPLETED phase
-  const grandFinalMatch = mappedBracketMatches.find(m => m.isGrandFinals) ||
-    mappedBracketMatches.filter(m => !m.isLosersBracket).sort((a, b) => b.round - a.round)[0];
+  // Champion detection for COMPLETED phase (prefer decided Bracket Reset over GF1)
+  const resetFinalMatch = mappedBracketMatches.find(m => m.id.startsWith('gf_reset_') && m.winner);
+  const grandFinalMatch = resetFinalMatch ||
+    mappedBracketMatches.find(m => m.isGrandFinals && !m.id.startsWith('gf_reset_')) ||
+    mappedBracketMatches.filter(m => !m.isLosersBracket && !m.is3rdPlaceMatch).sort((a, b) => b.round - a.round)[0];
   const championName = grandFinalMatch?.winner || null;
   const championWinnerId = grandFinalMatch ? (
     grandFinalMatch.winner === grandFinalMatch.player1 ? grandFinalMatch.player1Id : grandFinalMatch.player2Id
@@ -219,16 +275,116 @@ export default function TVDisplayPage() {
     phase === 'COMPLETED' ? 'Tournament Completed' :
     'Registration Phase';
 
-  // Open play queued players
+  // Open play queued players sorted by fairness priorityOrder
   const openPlayActiveMatches = matches.filter(m => m.endedAtEpochMs == null);
   const openPlayActivePlayerIds = new Set(openPlayActiveMatches.flatMap(m => [...m.teamA, ...m.teamB]));
-  const queuedPlayers = players
-    .filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !openPlayActivePlayerIds.has(p.id))
-    .sort((a, b) => a.queuedAtEpochMs - b.queuedAtEpochMs);
+  const queuedPlayers = priorityOrder(
+    players.filter(p => (p.status === PlayerStatus.AVAILABLE || p.status === PlayerStatus.QUEUED) && !p.currentCourtId && !openPlayActivePlayerIds.has(p.id))
+  );
   const upNext = queuedPlayers.slice(0, 8);
 
+  if (isEnded || session.isActive === false) {
+    const completedTotal = isTournament && tournamentState
+      ? tournamentState.matches.filter(m => m.status === 'COMPLETED').length
+      : matches.filter(m => m.endedAtEpochMs != null).length;
+    const topPlayers = [...players]
+      .sort((a, b) => (b.sessionWins - a.sessionWins) || (b.sessionGamesPlayed - a.sessionGamesPlayed))
+      .slice(0, 5);
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans select-none">
+        <header className="bg-slate-900/90 px-6 py-4 flex justify-between items-center border-b border-slate-800 backdrop-blur-xl shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center shrink-0">
+              <Trophy size={24} className="text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white truncate">{session.name}</h1>
+              <div className="flex items-center gap-3 mt-1 text-xs md:text-sm font-bold">
+                <span className="text-slate-300 uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700">
+                  Session Ended
+                </span>
+                <span className="text-slate-400">{completedTotal} Matches • {players.length} Players</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-3xl md:text-4xl font-black font-mono tracking-tighter text-slate-300">
+            {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center p-6 md:p-10 max-w-4xl w-full mx-auto space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl md:text-4xl font-black text-white">Thanks for Playing!</h2>
+            <p className="text-slate-400 text-base">This session has concluded. Final standings & highlights below.</p>
+          </div>
+
+          {isTournament && tournamentState ? (
+            <div className="w-full bg-slate-900/70 border border-slate-800 rounded-3xl p-6">
+              <TournamentLeaderboard tournamentState={tournamentState} players={players} />
+            </div>
+          ) : (
+            <div className="w-full bg-slate-900/70 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-widest text-indigo-400">Session Leaderboard</h3>
+              {topPlayers.length === 0 ? (
+                <p className="text-slate-500 text-center py-4">No player stats recorded.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {topPlayers.map((p, idx) => (
+                    <div key={p.id} className="flex items-center justify-between bg-slate-950/70 border border-slate-800 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono font-black text-lg text-amber-400 w-6">#{idx + 1}</span>
+                        <span className="font-bold text-white truncate">{p.name}</span>
+                      </div>
+                      <span className="font-mono text-sm font-bold text-emerald-400 shrink-0">
+                        {p.sessionWins}W - {p.sessionLosses}L ({p.sessionGamesPlayed} GP)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <Link
+            href="/"
+            className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm inline-flex items-center gap-2 transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Back to Home
+          </Link>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-hidden flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden lg:overflow-hidden flex flex-col font-sans select-none">
+      {/* Arena TV PA Announcement Banner */}
+      {activeAnnouncement && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-3xl shadow-2xl border border-indigo-400/50 flex items-center gap-4 animate-fade-in"
+        >
+          <div className="p-3 bg-white/15 rounded-2xl shrink-0">
+            <Megaphone size={28} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-black uppercase tracking-widest text-indigo-200">PA Announcement</div>
+            <div className="text-xl font-bold leading-snug break-words">{activeAnnouncement.text}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveAnnouncement(null)}
+            aria-label="Dismiss announcement"
+            className="p-2 rounded-xl hover:bg-white/15 text-indigo-100 transition-colors shrink-0"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
+
       {/* ─── TV Header ─── */}
       <header className="bg-slate-900/90 px-6 py-4 flex justify-between items-center border-b border-slate-800 backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-5">
@@ -269,7 +425,7 @@ export default function TVDisplayPage() {
 
       {/* ─── TOURNAMENT TV DISPLAY ─── */}
       {isTournament ? (
-        <main className="flex-1 flex p-6 gap-6 overflow-hidden">
+        <main className="flex-1 flex flex-col lg:flex-row p-4 lg:p-6 gap-6 overflow-y-auto lg:overflow-hidden">
           {/* Main Tournament Arena */}
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
             
@@ -471,7 +627,7 @@ export default function TVDisplayPage() {
           </div>
 
           {/* ─── Tournament Sidebar: Active Matches & QR ─── */}
-          <aside className="w-96 flex flex-col gap-6 shrink-0">
+          <aside className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
             {/* Active Match Info (IN_PROGRESS & READY) */}
             <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 flex-1 overflow-hidden flex flex-col">
               <h2 className="text-xl font-black mb-4 tracking-tight text-indigo-400 uppercase flex items-center gap-2">
@@ -547,8 +703,8 @@ export default function TVDisplayPage() {
         </main>
       ) : (
         /* ─── OPEN PLAY DISPLAY (Preserved) ─── */
-        <main className="flex-1 flex p-6 gap-6 overflow-hidden">
-          <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-max overflow-y-auto pr-2 pb-6 custom-scrollbar">
+        <main className="flex-1 flex flex-col lg:flex-row p-4 lg:p-6 gap-6 overflow-y-auto lg:overflow-hidden">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-max lg:overflow-y-auto lg:pr-2 pb-6 custom-scrollbar">
             {courts.map(court => (
               <div key={court.id} className="transform scale-100 origin-top">
                 <CourtCard court={court} readOnly={true} />
@@ -556,7 +712,7 @@ export default function TVDisplayPage() {
             ))}
           </div>
 
-          <aside className="w-96 flex flex-col gap-6 shrink-0">
+          <aside className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
             <div className="glass-dark rounded-3xl p-6 border border-slate-800 flex-1 overflow-hidden flex flex-col">
               <h2 className="text-2xl font-black mb-6 tracking-tight text-blue-400 uppercase">Up Next</h2>
               <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">

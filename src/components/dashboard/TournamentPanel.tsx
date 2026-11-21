@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
-import { QuickScoreChips } from '@/components/ui/QuickScoreChips';
+import { QuickScoreChips, clampScore, getScoreAdvisory } from '@/components/ui/QuickScoreChips';
 import { SessionType, TournamentPair, Player, TournamentMatch } from '@/types/models';
 import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches, hasDownstreamBracketMatchStarted } from '@/engine/tournament-engine';
@@ -827,13 +827,15 @@ export default function TournamentPanel() {
                                     type="number"
                                     min="0"
                                     max="99"
+                                    aria-label={`${getTeamName(match.teamAId)} score`}
                                     value={scoreA}
-                                    onChange={e => setScoreA(parseInt(e.target.value) || 0)}
+                                    onChange={e => setScoreA(clampScore(e.target.value))}
                                     className="w-full h-11 min-h-[44px] text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl py-1"
                                   />
                                   <button
                                     type="button"
-                                    onClick={() => setScoreA(scoreA + 1)}
+                                    aria-label={`Increase score for ${getTeamName(match.teamAId)}`}
+                                    onClick={() => setScoreA(Math.min(99, scoreA + 1))}
                                     className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
                                   >
                                     +
@@ -848,6 +850,7 @@ export default function TournamentPanel() {
                                 <div className="flex items-center gap-1">
                                   <button
                                     type="button"
+                                    aria-label={`Decrease score for ${getTeamName(match.teamBId)}`}
                                     onClick={() => setScoreB(Math.max(0, scoreB - 1))}
                                     className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
                                   >
@@ -857,13 +860,15 @@ export default function TournamentPanel() {
                                     type="number"
                                     min="0"
                                     max="99"
+                                    aria-label={`${getTeamName(match.teamBId)} score`}
                                     value={scoreB}
-                                    onChange={e => setScoreB(parseInt(e.target.value) || 0)}
+                                    onChange={e => setScoreB(clampScore(e.target.value))}
                                     className="w-full h-11 min-h-[44px] text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl py-1"
                                   />
                                   <button
                                     type="button"
-                                    onClick={() => setScoreB(scoreB + 1)}
+                                    aria-label={`Increase score for ${getTeamName(match.teamBId)}`}
+                                    onClick={() => setScoreB(Math.min(99, scoreB + 1))}
                                     className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-lg active:scale-95 transition-transform"
                                   >
                                     +
@@ -883,8 +888,15 @@ export default function TournamentPanel() {
                             {scoreA === scoreB ? (
                               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                             ) : (
-                              <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                              <div className="space-y-1 text-center">
+                                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                  Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                                </div>
+                                {getScoreAdvisory(scoreA, scoreB) && (
+                                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                                    {getScoreAdvisory(scoreA, scoreB)}
+                                  </p>
+                                )}
                               </div>
                             )}
 
@@ -899,7 +911,7 @@ export default function TournamentPanel() {
                               <button
                                 type="button"
                                 onClick={() => handleSaveChaosScore(match.id)}
-                                disabled={scoreA === scoreB}
+                                disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99}
                                 className="flex-1 min-h-[44px] py-2.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
                               >
                                 {isDone ? 'Update Score' : 'Save Score'}
@@ -1175,17 +1187,17 @@ export default function TournamentPanel() {
                               <div className="space-y-1">
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">{getTeamName(match.teamAId)}</label>
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
-                                  <input type="number" min="0" max="99" value={scoreA} onChange={e => setScoreA(parseInt(e.target.value) || 0)} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
-                                  <button onClick={() => setScoreA(scoreA + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                                  <button type="button" aria-label={`Decrease score for ${getTeamName(match.teamAId)}`} onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                                  <input type="number" min="0" max="99" aria-label={`${getTeamName(match.teamAId)} score`} value={scoreA} onChange={e => setScoreA(clampScore(e.target.value))} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
+                                  <button type="button" aria-label={`Increase score for ${getTeamName(match.teamAId)}`} onClick={() => setScoreA(Math.min(99, scoreA + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
                                 </div>
                               </div>
                               <div className="space-y-1">
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block truncate">{getTeamName(match.teamBId)}</label>
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
-                                  <input type="number" min="0" max="99" value={scoreB} onChange={e => setScoreB(parseInt(e.target.value) || 0)} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
-                                  <button onClick={() => setScoreB(scoreB + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                                  <button type="button" aria-label={`Decrease score for ${getTeamName(match.teamBId)}`} onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                                  <input type="number" min="0" max="99" aria-label={`${getTeamName(match.teamBId)} score`} value={scoreB} onChange={e => setScoreB(clampScore(e.target.value))} className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1" />
+                                  <button type="button" aria-label={`Increase score for ${getTeamName(match.teamBId)}`} onClick={() => setScoreB(Math.min(99, scoreB + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
                                 </div>
                               </div>
                             </div>
@@ -1200,13 +1212,20 @@ export default function TournamentPanel() {
                             {scoreA === scoreB ? (
                               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                             ) : (
-                              <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                Winner (→ UB): {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                              <div className="space-y-1 text-center">
+                                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                  Winner (→ UB): {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                                </div>
+                                {getScoreAdvisory(scoreA, scoreB) && (
+                                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                                    {getScoreAdvisory(scoreA, scoreB)}
+                                  </p>
+                                )}
                               </div>
                             )}
                             <div className="flex gap-2">
                               <button onClick={() => setScoringMatchId(null)} className="flex-1 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button>
-                              <button onClick={() => handleSaveTiebreakerScore(match.id)} disabled={scoreA === scoreB} className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all">
+                              <button onClick={() => handleSaveTiebreakerScore(match.id)} disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99} className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all">
                                 {isDone ? 'Update Score' : 'Save Score'}
                               </button>
                             </div>
@@ -1368,16 +1387,17 @@ export default function TournamentPanel() {
                               {getTeamName(match.teamAId)}
                             </label>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                              <button type="button" aria-label={`Decrease score for ${getTeamName(match.teamAId)}`} onClick={() => setScoreA(Math.max(0, scoreA - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
                               <input
                                 type="number"
                                 min="0"
                                 max="99"
+                                aria-label={`${getTeamName(match.teamAId)} score`}
                                 value={scoreA}
-                                onChange={e => setScoreA(parseInt(e.target.value) || 0)}
+                                onChange={e => setScoreA(clampScore(e.target.value))}
                                 className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                               />
-                              <button onClick={() => setScoreA(scoreA + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                              <button type="button" aria-label={`Increase score for ${getTeamName(match.teamAId)}`} onClick={() => setScoreA(Math.min(99, scoreA + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
                             </div>
                           </div>
 
@@ -1386,16 +1406,17 @@ export default function TournamentPanel() {
                               {getTeamName(match.teamBId)}
                             </label>
                             <div className="flex items-center gap-1">
-                              <button onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
+                              <button type="button" aria-label={`Decrease score for ${getTeamName(match.teamBId)}`} onClick={() => setScoreB(Math.max(0, scoreB - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">-</button>
                               <input
                                 type="number"
                                 min="0"
                                 max="99"
+                                aria-label={`${getTeamName(match.teamBId)} score`}
                                 value={scoreB}
-                                onChange={e => setScoreB(parseInt(e.target.value) || 0)}
+                                onChange={e => setScoreB(clampScore(e.target.value))}
                                 className="w-full text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                               />
-                              <button onClick={() => setScoreB(scoreB + 1)} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
+                              <button type="button" aria-label={`Increase score for ${getTeamName(match.teamBId)}`} onClick={() => setScoreB(Math.min(99, scoreB + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center">+</button>
                             </div>
                           </div>
                         </div>
@@ -1411,8 +1432,15 @@ export default function TournamentPanel() {
                         {scoreA === scoreB ? (
                           <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
                         ) : (
-                          <div className="text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                            Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                          <div className="space-y-1 text-center">
+                            <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                              Winner: {scoreA > scoreB ? getTeamName(match.teamAId) : getTeamName(match.teamBId)}
+                            </div>
+                            {getScoreAdvisory(scoreA, scoreB) && (
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                                {getScoreAdvisory(scoreA, scoreB)}
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -1425,7 +1453,7 @@ export default function TournamentPanel() {
                           </button>
                           <button
                             onClick={() => handleSavePoolScore(match.id)}
-                            disabled={scoreA === scoreB}
+                            disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99}
                             className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
                           >
                             {isDone ? 'Update Score' : 'Save Score'}

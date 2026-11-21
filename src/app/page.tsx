@@ -103,11 +103,13 @@ export default function HomePage() {
           {authMode === 'initial' && !currentUser && (
             <>
               <form onSubmit={handleJoin} className="space-y-4">
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 ml-2 uppercase tracking-wider">
+                <label htmlFor="join-session-code" className="block text-sm font-bold text-gray-700 dark:text-gray-300 ml-2 uppercase tracking-wider">
                   Join a Session
                 </label>
                 <div className="flex gap-3">
                   <input 
+                    id="join-session-code"
+                    aria-label="Session Join Code"
                     type="text" 
                     value={joinCode}
                     onChange={e => setJoinCode(e.target.value.toUpperCase())}
@@ -117,6 +119,8 @@ export default function HomePage() {
                   />
                   <button 
                     type="submit"
+                    aria-label="Join session"
+                    title="Join session"
                     disabled={joinCode.trim().length === 0}
                     className="px-6 min-h-[64px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:grayscale text-white rounded-2xl transition-all hover:scale-[1.05] active:scale-95 flex items-center justify-center shadow-md"
                   >
@@ -203,7 +207,7 @@ export default function HomePage() {
                   <p className="text-xs text-blue-500 dark:text-blue-400 font-bold uppercase tracking-wider">Logged in as</p>
                   <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{currentUser.email}</p>
                 </div>
-                <button onClick={async () => { setCurrentUser(null); try { const { logoutOrganizer } = await import('@/app/actions'); await logoutOrganizer(); } catch(e) {} }} className="p-3 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-500 rounded-xl transition-colors shadow-sm">
+                <button type="button" aria-label="Log out" title="Log out" onClick={async () => { setCurrentUser(null); try { const { logoutOrganizer } = await import('@/app/actions'); await logoutOrganizer(); } catch(e) {} }} className="p-3 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-500 rounded-xl transition-colors shadow-sm">
                   <LogOut size={20} />
                 </button>
               </div>

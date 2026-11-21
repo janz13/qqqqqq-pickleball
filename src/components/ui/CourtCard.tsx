@@ -59,7 +59,7 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
     const winningNames = winningTeam.map(p => p.name).join(' and ');
     
     tts.speak(`Congratulations to ${winningNames} for winning on ${court.label}.`);
-    completeMatch(match.id, winner, 11, 0);
+    completeMatch(match.id, winner, winner === Team.A ? 11 : 0, winner === Team.B ? 11 : 0);
   };
 
   useEffect(() => {
@@ -161,9 +161,9 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
             <div className="flex flex-col gap-2">
               {teamA.map((p: Player) => (
                 <div key={p.id} className="relative group flex items-center gap-2">
-                  <div className="flex-1"><PlayerCard player={p} compact /></div>
+                  <div className="flex-1 min-w-0"><PlayerCard player={p} compact /></div>
                   {!readOnly && (
-                    <button onClick={() => setSwappingPlayerId(p.id)} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 transition-colors">
+                    <button type="button" onClick={() => setSwappingPlayerId(p.id)} aria-label={`Swap ${p.name}`} title={`Swap ${p.name}`} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 transition-colors shrink-0">
                       <Repeat size={16} />
                     </button>
                   )}
@@ -182,9 +182,9 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
             <div className="flex flex-col gap-2">
               {teamB.map((p: Player) => (
                 <div key={p.id} className="relative group flex items-center gap-2">
-                  <div className="flex-1"><PlayerCard player={p} compact /></div>
+                  <div className="flex-1 min-w-0"><PlayerCard player={p} compact /></div>
                   {!readOnly && (
-                    <button onClick={() => setSwappingPlayerId(p.id)} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 transition-colors">
+                    <button type="button" onClick={() => setSwappingPlayerId(p.id)} aria-label={`Swap ${p.name}`} title={`Swap ${p.name}`} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 transition-colors shrink-0">
                       <Repeat size={16} />
                     </button>
                   )}

@@ -200,8 +200,10 @@ export function rankTournament(
   // ─────────────────────────────────────────────────────────────
   // 3. DOUBLE ELIMINATION (The Grand Slam)
   // ─────────────────────────────────────────────────────────────
-  // 1. Grand Finals match
-  const gfMatch = matches.find(m => m.id.startsWith('gf_'));
+  // 1. Grand Finals match (prefer Bracket Reset if triggered and decided)
+  const gfResetMatch = matches.find(m => m.id.startsWith('gf_reset_'));
+  const gfFirstMatch = matches.find(m => m.id.startsWith('gf_') && !m.id.startsWith('gf_reset_')) || matches.find(m => m.id.startsWith('gf_'));
+  const gfMatch = gfResetMatch ? (gfResetMatch.winnerTeamId ? gfResetMatch : undefined) : gfFirstMatch;
   const gfWinnerId = gfMatch?.winnerTeamId;
   const gfLoserId = gfMatch && gfWinnerId 
     ? (gfMatch.winnerTeamId === gfMatch.teamAId ? gfMatch.teamBId : gfMatch.teamAId) 

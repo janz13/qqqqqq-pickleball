@@ -2,6 +2,24 @@
 
 import React from 'react';
 
+/** Clamps a raw score input to valid pickleball UI range [0, 99]. */
+export function clampScore(raw: string | number): number {
+  const parsed = typeof raw === 'number' ? raw : parseInt(raw, 10);
+  if (isNaN(parsed)) return 0;
+  return Math.max(0, Math.min(99, parsed));
+}
+
+/** Returns an advisory hint if scores are valid (differ) yet unusual for win-by-2 pickleball. */
+export function getScoreAdvisory(scoreA: number, scoreB: number, targetScore = 11): string | null {
+  if (scoreA === scoreB) return null;
+  const high = Math.max(scoreA, scoreB);
+  const diff = Math.abs(scoreA - scoreB);
+  if (high > 25) return 'Unusually high score (> 25). Double-check before saving.';
+  if (high < targetScore) return `Winning score is below standard ${targetScore}.`;
+  if (high >= targetScore && diff < 2) return 'Standard pickleball requires winning by 2 points.';
+  return null;
+}
+
 interface QuickScoreChipsProps {
   teamAName: string;
   teamBName: string;
