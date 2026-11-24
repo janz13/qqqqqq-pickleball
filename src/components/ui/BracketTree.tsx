@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { Trophy, Medal, Award, RefreshCw, Edit3, X, Check, Flame, Crown, ArrowDown, Layout, Shield } from 'lucide-react';
-import { QuickScoreChips, clampScore, getScoreAdvisory } from './QuickScoreChips';
+import { Trophy, Medal, Award, RefreshCw, X, Check, Flame, Crown, ArrowDown, Layout, Swords } from 'lucide-react';
+import { QuickScoreChips, getScoreAdvisory } from './QuickScoreChips';
 
 export interface TournamentMatch {
   id: string;
@@ -118,8 +118,32 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   
   // Scoring / Editing Modal State
   const [activeMatchForScoring, setActiveMatchForScoring] = useState<TournamentMatch | null>(null);
-  const [modalScore1, setModalScore1] = useState(11);
-  const [modalScore2, setModalScore2] = useState(9);
+  const [rawScore1, setRawScore1] = useState('11');
+  const [rawScore2, setRawScore2] = useState('9');
+  const [confirmHighScore, setConfirmHighScore] = useState(false);
+
+  const parseScoreInput = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!/^-?\d+$/.test(trimmed)) return null;
+    const n = Number.parseInt(trimmed, 10);
+    return Number.isSafeInteger(n) ? n : null;
+  };
+
+  const parsedScore1 = parseScoreInput(rawScore1);
+  const parsedScore2 = parseScoreInput(rawScore2);
+  const hasInvalidScore =
+    parsedScore1 === null ||
+    parsedScore2 === null ||
+    parsedScore1 < 0 ||
+    parsedScore2 < 0 ||
+    parsedScore1 > 99 ||
+    parsedScore2 > 99;
+  const isTiedScore = !hasInvalidScore && parsedScore1 === parsedScore2;
+  const isUnusuallyHighScore = !hasInvalidScore && (parsedScore1 > 25 || parsedScore2 > 25);
+  const canSubmitScore =
+    !hasInvalidScore &&
+    !isTiedScore &&
+    (!isUnusuallyHighScore || confirmHighScore);
 
   // Separate matches into Upper Bracket, Lower Bracket, Grand Finals, and 3rd Place Match
   const upperMatches = matches.filter(m => !m.isLosersBracket && !m.isGrandFinals && !m.is3rdPlaceMatch);
@@ -169,7 +193,6 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
   let champion: string | null = null;
   let secondPlace: string | null = null;
   let thirdPlace: string | null = null;
-  let fourthPlace: string | null = null;
 
   if (hasDoubleElim) {
     if (grandFinalMatch && grandFinalMatch.winner && !activeResetPending) {
@@ -181,12 +204,6 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
       const lbFinals = lowerMatches.find(m => m.round === maxLbRound);
       if (lbFinals && lbFinals.winner) {
         thirdPlace = lbFinals.winner === lbFinals.player1 ? lbFinals.player2 ?? null : lbFinals.player1 ?? null;
-      }
-
-      // Fourth place is loser of Lower Bracket Semifinal
-      const lbSemis = lowerMatches.find(m => m.round === maxLbRound - 1);
-      if (lbSemis && lbSemis.winner) {
-        fourthPlace = lbSemis.winner === lbSemis.player1 ? lbSemis.player2 ?? null : lbSemis.player1 ?? null;
       }
     }
   } else {
@@ -205,23 +222,22 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
   const handleOpenScoreModal = (match: TournamentMatch) => {
     setActiveMatchForScoring(match);
-    setModalScore1(match.score1 ?? 11);
-    setModalScore2(match.score2 ?? 9);
+    setRawScore1(String(match.score1 ?? 11));
+    setRawScore2(String(match.score2 ?? 9));
+    setConfirmHighScore(false);
   };
 
   const handleSwapModalScores = () => {
-    const s1 = modalScore1;
-    const s2 = modalScore2;
-    setModalScore1(s2);
-    setModalScore2(s1);
+    setRawScore1(rawScore2);
+    setRawScore2(rawScore1);
   };
 
   const handleSubmitModalScore = () => {
-    if (!activeMatchForScoring || !onMatchClick) return;
-    const isP1Winner = modalScore1 > modalScore2;
+    if (!activeMatchForScoring || !onMatchClick || !canSubmitScore || parsedScore1 === null || parsedScore2 === null) return;
+    const isP1Winner = parsedScore1 > parsedScore2;
     const winnerId = isP1Winner ? activeMatchForScoring.player1Id : activeMatchForScoring.player2Id;
     if (winnerId) {
-      onMatchClick(activeMatchForScoring.id, winnerId, modalScore1, modalScore2);
+      onMatchClick(activeMatchForScoring.id, winnerId, parsedScore1, parsedScore2);
     }
     setActiveMatchForScoring(null);
   };
@@ -245,9 +261,9 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               handleOpenScoreModal(match);
             }
           }}
-          className={`w-[270px] rounded-xl overflow-hidden shadow-sm transition-all duration-200 border ${
+          className={`w-[270px] rounded-xl overflow-hidden shadow-sm transition-transform duration-150 border ${
             onMatchClick && isPlayable
-              ? 'cursor-pointer hover:ring-2 hover:ring-indigo-500/40 hover:scale-[1.01]'
+              ? 'cursor-pointer hover:ring-2 hover:ring-emerald-500/40 hover:scale-[1.01]'
               : isPlayable
                 ? 'cursor-default'
                 : 'opacity-70 cursor-default'
@@ -260,13 +276,13 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           {/* Liquipedia Style Header */}
           <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center text-[10px] font-bold text-gray-500 dark:text-gray-400">
             <span className="flex items-center gap-1.5 uppercase tracking-wider font-extrabold">
-              {bracketType === 'upper' && <Trophy size={11} className="text-indigo-500" />}
+              {bracketType === 'upper' && <Trophy size={11} className="text-emerald-500" />}
               {bracketType === 'lower' && <Flame size={11} className="text-amber-500" />}
               {bracketType === 'final' && <Crown size={11} className="text-emerald-500" />}
               {match.is3rdPlaceMatch ? `3rd Place • Match #${match.position}` : `Match #${match.position}`}
               {match.isBestOf3 && (
-                <span className="text-[9px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-black uppercase">
-                  ⚔️ Bo3
+                <span className="inline-flex items-center gap-0.5 text-[9px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded font-black uppercase">
+                  <Swords size={10} /> Bo3
                 </span>
               )}
             </span>
@@ -293,7 +309,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
           {/* Best-of-3 Series Standing */}
           {match.isBestOf3 && gamesPlayed > 0 && (
-            <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/30 text-[10px] font-black text-center text-indigo-700 dark:text-indigo-300 border-b border-gray-100 dark:border-gray-800">
+            <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/30 text-[10px] font-black text-center text-emerald-700 dark:text-emerald-300 border-b border-gray-100 dark:border-gray-800 tabular-nums">
               Series: {p1GameWins}-{p2GameWins}
             </div>
           )}
@@ -312,7 +328,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               {isP1Winner && <span className="text-emerald-500 font-black">✓</span>}
               {match.player1 || <span className="text-gray-400 italic font-normal">TBD</span>}
             </span>
-            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-black text-xs ${
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono tabular-nums font-black text-xs ${
               isP1Winner
                 ? 'bg-emerald-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
@@ -335,7 +351,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               {isP2Winner && <span className="text-emerald-500 font-black">✓</span>}
               {match.player2 || <span className="text-gray-400 italic font-normal">TBD</span>}
             </span>
-            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-black text-xs ${
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono tabular-nums font-black text-xs ${
               isP2Winner
                 ? 'bg-emerald-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
@@ -364,9 +380,9 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           <div className="flex flex-wrap items-center gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl shadow-inner max-w-full">
             <button
               onClick={() => setViewMode('all')}
-              className={`py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`py-2 px-3.5 rounded-xl text-xs font-black transition-colors duration-150 flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'all'
-                  ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -374,9 +390,9 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('winners')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'winners'
-                  ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
@@ -384,7 +400,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('losers')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'losers'
                   ? 'bg-white dark:bg-gray-900 text-amber-600 dark:text-amber-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -394,7 +410,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             </button>
             <button
               onClick={() => setViewMode('finals')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-colors duration-150 flex items-center gap-1.5 whitespace-nowrap ${
                 viewMode === 'finals'
                   ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -527,7 +543,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                     {/* ─── UPPER BRACKET (TOP) ─── */}
                     {(viewMode === 'all' || viewMode === 'winners') && upperRoundNums.length > 0 && (
                       <div className="space-y-6">
-                        <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                        <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                           <Trophy size={16} /> {hasDoubleElim ? 'Upper Bracket (Double Elimination)' : 'Championship Bracket'}
                         </div>
 
@@ -562,8 +578,8 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                           {/* 3rd Place Match — beside the Finals */}
                           {!hasDoubleElim && thirdPlaceMatch && (
                             <div className="flex flex-col justify-end min-w-[270px] relative ml-6">
-                              <h3 className="text-center text-xs font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-4">
-                                🥉 3rd Place Match
+                              <h3 className="text-center text-xs font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-4 inline-flex items-center justify-center gap-1">
+                                <Medal size={13} /> 3rd Place Match
                               </h3>
                               <div className="bg-gradient-to-b from-amber-50/50 to-transparent dark:from-amber-950/20 p-2 rounded-2xl border border-amber-300/40 dark:border-amber-800/40">
                                 {renderLiquipediaMatchCard(thirdPlaceMatch, 'upper')}
@@ -671,17 +687,38 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                   {activeMatchForScoring.player1}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button type="button" aria-label={`Decrease score for ${activeMatchForScoring.player1}`} onClick={() => setModalScore1(Math.max(0, modalScore1 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
+                  <button
+                    type="button"
+                    aria-label={`Decrease score for ${activeMatchForScoring.player1}`}
+                    onClick={() => {
+                      const next = Math.max(0, (parsedScore1 ?? 0) - 1);
+                      setRawScore1(String(next));
+                      if (next <= 25 && (parsedScore2 ?? 0) <= 25) setConfirmHighScore(false);
+                    }}
+                    className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200"
+                  >-</button>
                   <input
                     type="number"
                     min="0"
                     max="99"
                     aria-label={`${activeMatchForScoring.player1} score`}
-                    value={modalScore1}
-                    onChange={e => setModalScore1(clampScore(e.target.value))}
-                    className="w-14 text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
+                    value={rawScore1}
+                    onChange={e => {
+                      setRawScore1(e.target.value);
+                      setConfirmHighScore(false);
+                    }}
+                    className="w-14 text-center font-black font-mono tabular-nums text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                   />
-                  <button type="button" aria-label={`Increase score for ${activeMatchForScoring.player1}`} onClick={() => setModalScore1(Math.min(99, modalScore1 + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
+                  <button
+                    type="button"
+                    aria-label={`Increase score for ${activeMatchForScoring.player1}`}
+                    onClick={() => {
+                      const next = Math.min(99, Math.max(0, parsedScore1 ?? 0) + 1);
+                      setRawScore1(String(next));
+                      setConfirmHighScore(false);
+                    }}
+                    className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200"
+                  >+</button>
                 </div>
               </div>
 
@@ -690,7 +727,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                 <button
                   type="button"
                   onClick={handleSwapModalScores}
-                  className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors shadow-sm"
+                  className="px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100 transition-colors shadow-sm"
                 >
                   <RefreshCw size={12} /> Swap Scores / Winner
                 </button>
@@ -702,17 +739,38 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                   {activeMatchForScoring.player2}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button type="button" aria-label={`Decrease score for ${activeMatchForScoring.player2}`} onClick={() => setModalScore2(Math.max(0, modalScore2 - 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">-</button>
+                  <button
+                    type="button"
+                    aria-label={`Decrease score for ${activeMatchForScoring.player2}`}
+                    onClick={() => {
+                      const next = Math.max(0, (parsedScore2 ?? 0) - 1);
+                      setRawScore2(String(next));
+                      if ((parsedScore1 ?? 0) <= 25 && next <= 25) setConfirmHighScore(false);
+                    }}
+                    className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200"
+                  >-</button>
                   <input
                     type="number"
                     min="0"
                     max="99"
                     aria-label={`${activeMatchForScoring.player2} score`}
-                    value={modalScore2}
-                    onChange={e => setModalScore2(clampScore(e.target.value))}
-                    className="w-14 text-center font-black text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
+                    value={rawScore2}
+                    onChange={e => {
+                      setRawScore2(e.target.value);
+                      setConfirmHighScore(false);
+                    }}
+                    className="w-14 text-center font-black font-mono tabular-nums text-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg py-1"
                   />
-                  <button type="button" aria-label={`Increase score for ${activeMatchForScoring.player2}`} onClick={() => setModalScore2(Math.min(99, modalScore2 + 1))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200">+</button>
+                  <button
+                    type="button"
+                    aria-label={`Increase score for ${activeMatchForScoring.player2}`}
+                    onClick={() => {
+                      const next = Math.min(99, Math.max(0, parsedScore2 ?? 0) + 1);
+                      setRawScore2(String(next));
+                      setConfirmHighScore(false);
+                    }}
+                    className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 font-bold flex items-center justify-center text-gray-700 dark:text-gray-200"
+                  >+</button>
                 </div>
               </div>
             </div>
@@ -721,23 +779,42 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
             <QuickScoreChips
               teamAName={activeMatchForScoring.player1 || 'Team A'}
               teamBName={activeMatchForScoring.player2 || 'Team B'}
-              currentA={modalScore1}
-              currentB={modalScore2}
-              onPick={(a, b) => { setModalScore1(a); setModalScore2(b); }}
+              currentA={parsedScore1 ?? 0}
+              currentB={parsedScore2 ?? 0}
+              onPick={(a, b) => {
+                setRawScore1(String(a));
+                setRawScore2(String(b));
+                setConfirmHighScore(false);
+              }}
             />
 
             {/* Error or winner hint */}
-            {modalScore1 === modalScore2 ? (
+            {hasInvalidScore ? (
+              <p className="text-xs text-rose-500 font-semibold text-center">
+                Scores must be whole numbers between 0 and 99.
+              </p>
+            ) : isTiedScore ? (
               <p className="text-xs text-rose-500 font-semibold text-center">Scores must differ to determine a winner.</p>
             ) : (
-              <div className="space-y-1 text-center">
+              <div className="space-y-2 text-center">
                 <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                  Winner: {modalScore1 > modalScore2 ? activeMatchForScoring.player1 : activeMatchForScoring.player2}
+                  Winner: {(parsedScore1 ?? 0) > (parsedScore2 ?? 0) ? activeMatchForScoring.player1 : activeMatchForScoring.player2}
                 </div>
-                {getScoreAdvisory(modalScore1, modalScore2) && (
+                {getScoreAdvisory(parsedScore1!, parsedScore2!) && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                    {getScoreAdvisory(modalScore1, modalScore2)}
+                    {getScoreAdvisory(parsedScore1!, parsedScore2!)}
                   </p>
+                )}
+                {isUnusuallyHighScore && (
+                  <label className="flex items-center justify-center gap-2 text-xs text-amber-700 dark:text-amber-300 font-semibold cursor-pointer bg-amber-50 dark:bg-amber-950/40 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800/60">
+                    <input
+                      type="checkbox"
+                      checked={confirmHighScore}
+                      onChange={e => setConfirmHighScore(e.target.checked)}
+                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Confirm unusually high score ({parsedScore1}-{parsedScore2})</span>
+                  </label>
                 )}
               </div>
             )}
@@ -751,8 +828,8 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
               </button>
               <button
                 onClick={handleSubmitModalScore}
-                disabled={modalScore1 === modalScore2 || modalScore1 < 0 || modalScore2 < 0 || modalScore1 > 99 || modalScore2 > 99}
-                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-1.5"
+                disabled={!canSubmitScore}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold text-sm shadow-md transition-colors duration-150 flex items-center justify-center gap-1.5"
               >
                 <Check size={16} /> Save Score
               </button>

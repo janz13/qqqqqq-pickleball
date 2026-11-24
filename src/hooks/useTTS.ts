@@ -16,22 +16,37 @@ export function useTTS() {
   };
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !window.speechSynthesis) {
+      return;
+    }
+    const synth = window.speechSynthesis;
     const updateVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
+      const voices = synth.getVoices();
       setAvailableVoices(voices);
       if (!ttsVoice && voices.length > 0) {
         setTTSVoice(voices[0].name);
       }
     };
     updateVoices();
-    window.speechSynthesis.onvoiceschanged = updateVoices;
+    if (typeof synth.addEventListener === 'function') {
+      synth.addEventListener('voiceschanged', updateVoices);
+      return () => synth.removeEventListener('voiceschanged', updateVoices);
+    }
+    synth.onvoiceschanged = updateVoices;
+    return () => {
+      synth.onvoiceschanged = null;
+    };
   }, [ttsVoice, setTTSVoice]);
 
   const processQueueRef = useRef<() => void>(() => {});
 
   const processQueue = useCallback(() => {
     if (isSpeaking.current || queue.current.length === 0) return;
-    
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
+      queue.current = [];
+      return;
+    }
+
     // Check next item
     const nextItem = queue.current[0];
     if (!isEnabled && !nextItem.force) {
@@ -46,6 +61,10 @@ export function useTTS() {
     if (selectedVoice) utterance.voice = selectedVoice;
     utterance.rate = rate;
     utterance.onend = () => {
+      isSpeaking.current = false;
+      processQueueRef.current();
+    };
+    utterance.onerror = () => {
       isSpeaking.current = false;
       processQueueRef.current();
     };

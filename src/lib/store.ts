@@ -1,15 +1,155 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer, TournamentPair } from '@/types/models';
+import { Player, Court, Match, Session, PlayerStatus, Team, ProposedMatch, CourtStatus, createPlayer, TournamentPair, TournamentMatch } from '@/types/models';
 import { buildNextBatches, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 import { initializeTournament } from '@/engine/tournament-engine';
 
-import { createClient } from './supabase';
-
 // Module-level handles shared between endSession() and cloud sync listener
 let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let isSyncingFromStorage = false;
+
+export interface CloudSessionSnapshotRow {
+  id: string;
+  is_active?: boolean;
+  updated_at?: string;
+  state_json?: {
+    session?: (Session & { deleted?: boolean }) | null;
+    players?: Player[];
+    matches?: Match[];
+  } | null;
+}
+
+/**
+ * Pure aggregator that computes all-time career stats from cloud session snapshots,
+ * covering both Open Play matches and Tournament (Pool/Bracket/Chaos) completed matches.
+ */
+export function aggregateCloudRosterRows(rows: CloudSessionSnapshotRow[]): Player[] {
+  const ordered = [...rows].sort((a, b) => {
+    const tA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const tB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    return tA - tB;
+  });
+
+  const playerMap = new Map<string, {
+    name: string;
+    skillLevel: number;
+    duprProfileUrl?: string | null;
+    photoUrl?: string | null;
+    allTimeWins: number;
+    allTimeLosses: number;
+    allTimeGamesPlayed: number;
+    allTimeSessionsPlayed: number;
+    lastSeenEpochMs: number;
+  }>();
+
+  for (const row of ordered) {
+    const state = row.state_json;
+    if (!state || state.session?.deleted || !Array.isArray(state.players)) continue;
+
+    const sessionPlayers = state.players;
+    const sessionMatches = Array.isArray(state.matches) ? state.matches : [];
+    const updatedAtMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+
+    const matchWinsByPlayer = new Map<string, number>();
+    const matchLossesByPlayer = new Map<string, number>();
+
+    sessionMatches.forEach(m => {
+      if (m.endedAtEpochMs && m.winner) {
+        const winners = m.winner === Team.A ? m.teamA : m.teamB;
+        const losers = m.winner === Team.A ? m.teamB : m.teamA;
+        winners.forEach(id => matchWinsByPlayer.set(id, (matchWinsByPlayer.get(id) || 0) + 1));
+        losers.forEach(id => matchLossesByPlayer.set(id, (matchLossesByPlayer.get(id) || 0) + 1));
+      }
+    });
+
+    const tState = state.session?.tournamentState;
+    if (tState && Array.isArray(tState.matches) && Array.isArray(tState.pairs)) {
+      const pairMap = new Map<string, TournamentPair>(
+        tState.pairs.map((pair: TournamentPair) => [pair.id, pair])
+      );
+      tState.matches.forEach((tm: TournamentMatch) => {
+        if (tm.status === 'COMPLETED' && tm.winnerTeamId && tm.teamAId && tm.teamBId) {
+          const winPair = pairMap.get(tm.winnerTeamId);
+          const losePairId = tm.winnerTeamId === tm.teamAId ? tm.teamBId : tm.teamAId;
+          const losePair = pairMap.get(losePairId);
+          if (winPair) {
+            [winPair.player1Id, winPair.player2Id].forEach(pid => {
+              if (pid) matchWinsByPlayer.set(pid, (matchWinsByPlayer.get(pid) || 0) + 1);
+            });
+          }
+          if (losePair) {
+            [losePair.player1Id, losePair.player2Id].forEach(pid => {
+              if (pid) matchLossesByPlayer.set(pid, (matchLossesByPlayer.get(pid) || 0) + 1);
+            });
+          }
+        }
+      });
+    }
+
+    for (const sp of sessionPlayers) {
+      const key = sp.name.trim().toLowerCase();
+      if (!key) continue;
+
+      const winsFromMatches = matchWinsByPlayer.get(sp.id);
+      const lossesFromMatches = matchLossesByPlayer.get(sp.id);
+      const wins = winsFromMatches !== undefined ? winsFromMatches : (sp.sessionWins || 0);
+      const losses = lossesFromMatches !== undefined ? lossesFromMatches : (sp.sessionLosses || 0);
+      const games = Math.max(sp.sessionGamesPlayed || 0, wins + losses);
+
+      const existing = playerMap.get(key);
+      if (!existing) {
+        playerMap.set(key, {
+          name: sp.name.trim(),
+          skillLevel: sp.skillLevel || 3,
+          duprProfileUrl: sp.duprProfileUrl ?? null,
+          photoUrl: sp.photoUrl ?? null,
+          allTimeWins: wins,
+          allTimeLosses: losses,
+          allTimeGamesPlayed: games,
+          allTimeSessionsPlayed: 1,
+          lastSeenEpochMs: updatedAtMs,
+        });
+      } else {
+        existing.allTimeWins += wins;
+        existing.allTimeLosses += losses;
+        existing.allTimeGamesPlayed += games;
+        existing.allTimeSessionsPlayed += 1;
+        if (updatedAtMs >= existing.lastSeenEpochMs) {
+          existing.skillLevel = sp.skillLevel || existing.skillLevel;
+          existing.name = sp.name.trim();
+          if (sp.duprProfileUrl !== undefined) existing.duprProfileUrl = sp.duprProfileUrl;
+          if (sp.photoUrl !== undefined) existing.photoUrl = sp.photoUrl;
+          existing.lastSeenEpochMs = updatedAtMs;
+        }
+      }
+    }
+  }
+
+  return Array.from(playerMap.values()).map(p => createPlayer({
+    id: 'r_' + Math.random().toString(36).substring(2, 11),
+    name: p.name,
+    skillLevel: p.skillLevel,
+    status: PlayerStatus.AVAILABLE,
+    queuedAtEpochMs: Date.now(),
+    joinedSessionAtEpochMs: Date.now(),
+    isLatecomer: false,
+    currentCourtId: null,
+    sessionGamesPlayed: 0,
+    sessionWins: 0,
+    sessionLosses: 0,
+    allTimeGamesPlayed: p.allTimeGamesPlayed,
+    allTimeWins: p.allTimeWins,
+    allTimeLosses: p.allTimeLosses,
+    allTimeSessionsPlayed: p.allTimeSessionsPlayed,
+    consecutiveSitOuts: 0,
+    recentPartnerIds: [],
+    recentOpponentIds: [],
+    lockedPartnerId: null,
+    duprProfileUrl: p.duprProfileUrl ?? null,
+    photoUrl: p.photoUrl ?? null,
+  }));
+}
 
 function mergePlayerIntoRoster(roster: Player[], player: Player): Player[] {
   const nameKey = player.name.trim().toLowerCase();
@@ -28,6 +168,8 @@ function mergePlayerIntoRoster(roster: Player[], player: Player): Player[] {
 }
 
 interface StoreState {
+  _hasHydrated: boolean;
+  setHasHydrated: (hydrated: boolean) => void;
   currentUser: { email: string; id: string } | null;
   setCurrentUser: (user: { email: string; id: string } | null) => void;
   
@@ -74,7 +216,7 @@ interface StoreState {
   initializeSession: (name: string, courtsCount: number, customCourtLabels?: string[]) => Session;
   startTournament: (pairingStrategy?: 'RANDOM' | 'LOCKED' | 'CUSTOM', customPairs?: TournamentPair[]) => void;
   completeTournamentMatch: (matchId: string) => void;
-  swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => void;
+  swapPlayerInMatch: (matchId: string, teamOrOldId: Team | string, oldOrNewId: string, maybeNewId?: string) => void;
   reverseMatchWinner: (matchId: string) => void;
   syncCloudRoster: (userId?: string) => Promise<void>;
   
@@ -91,6 +233,8 @@ interface StoreState {
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
+      _hasHydrated: false,
+      setHasHydrated: (hydrated) => set({ _hasHydrated: hydrated }),
       currentUser: null,
       setCurrentUser: (user) => {
         set(state => {
@@ -591,32 +735,26 @@ export const useStore = create<StoreState>()(
           };
         });
 
-        // Await cloud inactivation so callers can navigate safely without aborting the request
+        // Await verified cloud inactivation so callers can navigate safely without aborting the request
         if (typeof window !== 'undefined' && userSnapshot) {
           try {
-            const supabase = createClient();
-            if (supabase) {
-              const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
-              const finalState = {
-                players: sanitizePlayers(playersSnapshot),
-                courts: courtsSnapshot,
-                matches: matchesSnapshot,
-                session: endedSession,
-                endedAtEpochMs: Date.now()
-              };
-              const { error } = await supabase.from('sessions').update({
-                is_active: false,
-                state_json: finalState,
-                updated_at: new Date().toISOString()
-              }).eq('id', endedSession.id);
-              if (error) {
-                console.error("Failed to broadcast session end:", error);
-              } else if (!userSnapshot.id.startsWith('guest_')) {
-                await get().syncCloudRoster(userSnapshot.id);
-              }
+            const { endSessionAction } = await import('@/app/actions');
+            const sanitizePlayers = (players: Player[]) => players.map(p => ({ ...p, photoUrl: undefined }));
+            const finalState = {
+              players: sanitizePlayers(playersSnapshot),
+              courts: courtsSnapshot,
+              matches: matchesSnapshot,
+              session: endedSession,
+              endedAtEpochMs: Date.now(),
+            };
+            const res = await endSessionAction(endedSession.id, finalState, userSnapshot.id);
+            if (res.error) {
+              console.error('Failed to broadcast session end:', res.error);
+            } else if (!userSnapshot.id.startsWith('guest_')) {
+              await get().syncCloudRoster(userSnapshot.id);
             }
           } catch (e) {
-            console.error("Failed to broadcast session end", e);
+            console.error('Failed to broadcast session end', e);
           }
         }
       },
@@ -624,15 +762,30 @@ export const useStore = create<StoreState>()(
       clearHistory: () => set({ sessionHistory: [] }),
 
       initializeSession: (name, courtsCount, customCourtLabels) => {
-        // D6: if this organizer still has a live session, close it properly
-        // (archive to history + mark inactive in cloud) instead of orphaning it.
-        const prev = get();
-        const prevOwner = prev.currentUser?.id || 'guest';
-        if (prev.session && prev.session.isActive && prev.session.ownerUid === prevOwner) {
-          get().endSession();
+        // Cancel any pending cloud debounce from a prior session before switching
+        if (pendingSyncTimer) {
+          clearTimeout(pendingSyncTimer);
+          pendingSyncTimer = null;
         }
 
-        const state = get();
+        const prev = get();
+        const prevOwner = prev.currentUser?.id || 'guest';
+        const hasPrevActive = Boolean(
+          prev.session && prev.session.isActive && prev.session.ownerUid === prevOwner
+        );
+        const endedPrevSession = hasPrevActive && prev.session
+          ? { ...prev.session, isActive: false }
+          : null;
+        const endedPrevHistoryItem = endedPrevSession
+          ? {
+              session: endedPrevSession,
+              players: prev.players,
+              courts: prev.courts,
+              matches: prev.matches,
+              endedAtEpochMs: Date.now(),
+            }
+          : null;
+
         const sessionId = 's_' + Date.now().toString(36);
         // D7: always exactly 5 chars, unambiguous alphabet (no 0/O, 1/I/L)
         const JOIN_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -644,7 +797,7 @@ export const useStore = create<StoreState>()(
           id: sessionId,
           joinCode,
           name,
-          ownerUid: state.currentUser?.id || 'guest',
+          ownerUid: prev.currentUser?.id || 'guest',
           createdAtEpochMs: Date.now(),
           isActive: true,
           courtsPerBatch: courtsCount,
@@ -659,15 +812,36 @@ export const useStore = create<StoreState>()(
           currentMatchId: null
         }));
 
-        set({
+        set((cur) => ({
+          sessionHistory: endedPrevHistoryItem
+            ? [...cur.sessionHistory, endedPrevHistoryItem].slice(-50)
+            : cur.sessionHistory,
           session: newSession,
           sessionId,
           joinCode,
           courts: initialCourts,
           players: [],
           matches: [],
-          roster: state.currentUser ? state.roster : [] // Only keep roster for logged in users
-        });
+          roster: cur.currentUser ? cur.roster : [], // Only keep roster for logged in users
+        }));
+
+        // Inactivate prior session in cloud asynchronously using its frozen snapshot (never clobbers newSession)
+        if (typeof window !== 'undefined' && endedPrevSession && endedPrevHistoryItem && prev.currentUser) {
+          const sanitizePlayers = (ps: Player[]) => ps.map(p => ({ ...p, photoUrl: undefined }));
+          const finalPrevState = {
+            players: sanitizePlayers(endedPrevHistoryItem.players),
+            courts: endedPrevHistoryItem.courts,
+            matches: endedPrevHistoryItem.matches,
+            session: endedPrevSession,
+            endedAtEpochMs: endedPrevHistoryItem.endedAtEpochMs,
+          };
+          const callerUid = prev.currentUser.id;
+          void import('@/app/actions')
+            .then(({ endSessionAction }) =>
+              endSessionAction(endedPrevSession.id, finalPrevState, callerUid)
+            )
+            .catch(err => console.error('Background endSession inactivation failed:', err));
+        }
 
         return newSession;
       },
@@ -716,14 +890,14 @@ export const useStore = create<StoreState>()(
         return { players: updatedPlayers };
       }),
 
-      swapPlayerInMatch: (matchId: string, teamOrOldId: any, oldOrNewId: string, maybeNewId?: string) => set((state) => {
+      swapPlayerInMatch: (matchId: string, teamOrOldId: Team | string, oldOrNewId: string, maybeNewId?: string) => set((state) => {
         let oldPlayerId: string;
         let newPlayerId: string;
         if (maybeNewId !== undefined) {
           oldPlayerId = oldOrNewId;
           newPlayerId = maybeNewId;
         } else {
-          oldPlayerId = teamOrOldId;
+          oldPlayerId = String(teamOrOldId);
           newPlayerId = oldOrNewId;
         }
 
@@ -832,118 +1006,18 @@ export const useStore = create<StoreState>()(
 
       syncCloudRoster: async (userId?: string) => {
         const uid = userId || get().currentUser?.id;
-        if (!uid || uid.startsWith('guest_')) return;
+        if (!uid || uid.startsWith('guest_') || typeof window === 'undefined') return;
 
         try {
-          const { createClient } = await import('./supabase');
-          const supabase = createClient();
-          if (!supabase) return;
+          const { fetchOwnerSessionsAction } = await import('@/app/actions');
+          const { sessions, error } = await fetchOwnerSessionsAction(uid, 50, 0);
 
-          const { data, error } = await supabase
-            .from('sessions')
-            .select('id, is_active, state_json, updated_at')
-            .eq('owner_uid', uid)
-            .order('updated_at', { ascending: true });
-
-          if (error || !data) {
+          if (error) {
             console.error('Failed to fetch sessions for cloud roster sync:', error);
             return;
           }
 
-          const playerMap = new Map<string, {
-            name: string;
-            skillLevel: number;
-            duprProfileUrl?: string | null;
-            photoUrl?: string | null;
-            allTimeWins: number;
-            allTimeLosses: number;
-            allTimeGamesPlayed: number;
-            allTimeSessionsPlayed: number;
-            lastSeenEpochMs: number;
-          }>();
-
-          for (const row of data) {
-            const state = row.state_json;
-            if (!state || !Array.isArray(state.players)) continue;
-
-            const sessionPlayers = state.players as Player[];
-            const sessionMatches = Array.isArray(state.matches) ? (state.matches as Match[]) : [];
-            const updatedAtMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
-
-            const matchWinsByPlayer = new Map<string, number>();
-            const matchLossesByPlayer = new Map<string, number>();
-
-            sessionMatches.forEach(m => {
-              if (m.endedAtEpochMs && m.winner) {
-                const winners = m.winner === Team.A ? m.teamA : m.teamB;
-                const losers = m.winner === Team.A ? m.teamB : m.teamA;
-                winners.forEach(id => matchWinsByPlayer.set(id, (matchWinsByPlayer.get(id) || 0) + 1));
-                losers.forEach(id => matchLossesByPlayer.set(id, (matchLossesByPlayer.get(id) || 0) + 1));
-              }
-            });
-
-            for (const sp of sessionPlayers) {
-              const key = sp.name.trim().toLowerCase();
-              if (!key) continue;
-
-              const winsFromMatches = matchWinsByPlayer.get(sp.id);
-              const lossesFromMatches = matchLossesByPlayer.get(sp.id);
-              const wins = winsFromMatches !== undefined ? winsFromMatches : (sp.sessionWins || 0);
-              const losses = lossesFromMatches !== undefined ? lossesFromMatches : (sp.sessionLosses || 0);
-              const games = sp.sessionGamesPlayed || (wins + losses);
-
-              const existing = playerMap.get(key);
-              if (!existing) {
-                playerMap.set(key, {
-                  name: sp.name.trim(),
-                  skillLevel: sp.skillLevel || 3,
-                  duprProfileUrl: sp.duprProfileUrl ?? null,
-                  photoUrl: sp.photoUrl ?? null,
-                  allTimeWins: wins,
-                  allTimeLosses: losses,
-                  allTimeGamesPlayed: games,
-                  allTimeSessionsPlayed: 1,
-                  lastSeenEpochMs: updatedAtMs
-                });
-              } else {
-                existing.allTimeWins += wins;
-                existing.allTimeLosses += losses;
-                existing.allTimeGamesPlayed += games;
-                existing.allTimeSessionsPlayed += 1;
-                if (updatedAtMs >= existing.lastSeenEpochMs) {
-                  existing.skillLevel = sp.skillLevel || existing.skillLevel;
-                  existing.name = sp.name.trim();
-                  if (sp.duprProfileUrl !== undefined) existing.duprProfileUrl = sp.duprProfileUrl;
-                  if (sp.photoUrl !== undefined) existing.photoUrl = sp.photoUrl;
-                  existing.lastSeenEpochMs = updatedAtMs;
-                }
-              }
-            }
-          }
-
-          const aggregatedRoster: Player[] = Array.from(playerMap.values()).map(p => createPlayer({
-            id: 'r_' + Math.random().toString(36).substr(2, 9),
-            name: p.name,
-            skillLevel: p.skillLevel,
-            status: PlayerStatus.AVAILABLE,
-            queuedAtEpochMs: Date.now(),
-            joinedSessionAtEpochMs: Date.now(),
-            isLatecomer: false,
-            currentCourtId: null,
-            sessionGamesPlayed: 0,
-            sessionWins: 0,
-            sessionLosses: 0,
-            allTimeGamesPlayed: p.allTimeGamesPlayed,
-            allTimeWins: p.allTimeWins,
-            allTimeLosses: p.allTimeLosses,
-            allTimeSessionsPlayed: p.allTimeSessionsPlayed,
-            consecutiveSitOuts: 0,
-            recentPartnerIds: [],
-            recentOpponentIds: [],
-            lockedPartnerId: null,
-            duprProfileUrl: p.duprProfileUrl ?? null,
-            photoUrl: p.photoUrl ?? null
-          }));
+          const aggregatedRoster = aggregateCloudRosterRows(sessions as CloudSessionSnapshotRow[]);
 
           const currentRoster = get().roster;
           const mergedRoster: Player[] = [...aggregatedRoster];
@@ -1036,10 +1110,22 @@ export const useStore = create<StoreState>()(
       name: 'pickleball-storage',
       storage: createJSONStorage(() => {
         if (typeof window === 'undefined') {
-          throw new Error('localStorage unavailable during SSR');
+          return {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          };
         }
         return {
-          getItem: (name: string) => window.localStorage.getItem(name),
+          getItem: (name: string) => {
+            if (
+              window.location.pathname.startsWith('/session/') &&
+              new URLSearchParams(window.location.search).get('preview') === '1'
+            ) {
+              return null;
+            }
+            return window.localStorage.getItem(name);
+          },
           setItem: (name: string, value: string) => {
             if (
               isSyncingFromStorage ||
@@ -1073,13 +1159,18 @@ export const useStore = create<StoreState>()(
 
         const persistedCore = { ...state };
         delete (persistedCore as Partial<StoreState>).syncError;
+        delete (persistedCore as Partial<StoreState>)._hasHydrated;
         return {
           ...persistedCore,
           players: sanitizePlayers(state.players),
           sessionHistory: historySansPhotos
         };
       },
-      merge: (persistedState: any, currentState: StoreState) => {
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
+      merge: (persistedState: unknown, currentState: StoreState) => {
+        const persisted = (persistedState ?? {}) as Partial<StoreState>;
         // CRITICAL FIX for court glitch:
         // If the current in-memory state already has a session loaded (e.g. from cloud fetch),
         // do NOT let localStorage overwrite the live session data (players, courts, matches).
@@ -1088,17 +1179,17 @@ export const useStore = create<StoreState>()(
           return {
             ...currentState,
             // Only restore these non-session fields from localStorage:
-            currentUser: persistedState?.currentUser ?? currentState.currentUser,
-            roster: persistedState?.roster ?? currentState.roster,
-            rostersByOwner: persistedState?.rostersByOwner ?? currentState.rostersByOwner,
-            sessionHistory: persistedState?.sessionHistory ?? currentState.sessionHistory,
-            ttsEnabled: persistedState?.ttsEnabled ?? currentState.ttsEnabled,
-            ttsVoice: persistedState?.ttsVoice ?? currentState.ttsVoice,
-            ttsRate: persistedState?.ttsRate ?? currentState.ttsRate,
+            currentUser: persisted.currentUser ?? currentState.currentUser,
+            roster: persisted.roster ?? currentState.roster,
+            rostersByOwner: persisted.rostersByOwner ?? currentState.rostersByOwner,
+            sessionHistory: persisted.sessionHistory ?? currentState.sessionHistory,
+            ttsEnabled: persisted.ttsEnabled ?? currentState.ttsEnabled,
+            ttsVoice: persisted.ttsVoice ?? currentState.ttsVoice,
+            ttsRate: persisted.ttsRate ?? currentState.ttsRate,
           };
         }
         // Normal merge for organizer — localStorage is the source of truth
-        return { ...currentState, ...persistedState };
+        return { ...currentState, ...persisted };
       }
     }
   )
@@ -1114,9 +1205,6 @@ if (typeof window !== 'undefined') {
     if (!state.session?.isActive || !state.currentUser) return;
     if (state.session.ownerUid !== state.currentUser.id) return;
 
-    const supabase = createClient();
-    if (!supabase) return;
-
     if (isUploading) {
       pendingUpload = true;
       return;
@@ -1124,6 +1212,7 @@ if (typeof window !== 'undefined') {
 
     isUploading = true;
     try {
+      const { upsertSessionAction } = await import('@/app/actions');
       do {
         pendingUpload = false;
         const latest = useStore.getState();
@@ -1135,22 +1224,23 @@ if (typeof window !== 'undefined') {
           matches: latest.matches,
           session: latest.session
         };
-        const { error } = await supabase.from('sessions').upsert({
+        const res = await upsertSessionAction({
           id: latest.session.id,
-          join_code: latest.session.joinCode,
-          owner_uid: latest.session.ownerUid,
-          is_active: latest.session.isActive,
-          state_json: payload,
-          updated_at: new Date().toISOString()
+          joinCode: latest.session.joinCode,
+          ownerUid: latest.session.ownerUid,
+          isActive: latest.session.isActive,
+          stateJson: payload,
         });
 
-        if (error) {
-          console.error("Supabase Sync Error:", error);
-          useStore.setState({ syncError: `Cloud Sync Error: ${error.message}` });
+        if (res.error) {
+          console.error('Supabase Sync Error:', res.error);
+          useStore.setState({ syncError: res.error });
         } else if (useStore.getState().syncError) {
           useStore.setState({ syncError: null });
         }
       } while (pendingUpload);
+    } catch (err) {
+      console.error('Cloud sync action failed:', err);
     } finally {
       isUploading = false;
     }

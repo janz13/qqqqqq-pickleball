@@ -1,4 +1,4 @@
-import { Player, Match, Team } from '@/types/models';
+import { Player, Match } from '@/types/models';
 
 export function getSortedPlayers(players: Player[], matches: Match[]): Player[] {
   // Calculate exact total time played and avg opponent skill per player

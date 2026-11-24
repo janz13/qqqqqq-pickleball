@@ -1,9 +1,10 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { Trophy, Medal, Award, RefreshCw, GitMerge } from 'lucide-react';
+import { Trophy, Medal, Award, RefreshCw } from 'lucide-react';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { getSortedPlayers } from '@/utils/leaderboard';
+import { getInitials } from '@/utils/initials';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
 import { useState } from 'react';
 
@@ -52,9 +53,9 @@ export default function LeaderboardPanel() {
         <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl inline-flex shadow-inner border border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setViewMode('session')}
-            className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 ${
+            className={`px-6 py-2 rounded-lg font-semibold text-sm transition-colors duration-150 ${
               viewMode === 'session' 
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-gray-600' 
+                ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-400 shadow-sm border border-gray-200 dark:border-gray-600' 
                 : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
             }`}
           >
@@ -62,9 +63,9 @@ export default function LeaderboardPanel() {
           </button>
           <button
             onClick={() => setViewMode('alltime')}
-            className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all duration-200 ${
+            className={`px-6 py-2 rounded-lg font-semibold text-sm transition-colors duration-150 ${
               viewMode === 'alltime' 
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-gray-600' 
+                ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-400 shadow-sm border border-gray-200 dark:border-gray-600' 
                 : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
             }`}
           >
@@ -76,10 +77,11 @@ export default function LeaderboardPanel() {
           <button
             onClick={handleSync}
             disabled={isSyncing}
-            className="p-2 text-gray-500 hover:text-blue-600 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm border border-gray-200 dark:border-gray-700"
+            aria-label="Refresh All-Time stats from Cloud"
+            className="p-2 text-gray-500 hover:text-emerald-600 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm border border-gray-200 dark:border-gray-700"
             title="Refresh All-Time stats from Cloud"
           >
-            <RefreshCw size={16} className={isSyncing ? 'animate-spin text-blue-600' : ''} />
+            <RefreshCw size={16} className={isSyncing ? 'animate-spin text-emerald-600' : ''} />
           </button>
         )}
       </div>
@@ -105,11 +107,11 @@ export default function LeaderboardPanel() {
                 <div className="flex flex-col items-center flex-1 min-w-0 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.1s' }}>
                   <div className="bg-white dark:bg-gray-900 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-sm">
                     <Medal className="text-slate-400 absolute -top-5 drop-shadow-md" size={32} />
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-slate-400 to-slate-500 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">
-                      {top3[1].photoUrl ? <img src={top3[1].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[1].name.substring(0, 2).toUpperCase()}
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-slate-400 to-slate-500 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden ring-1 ring-black/10 dark:ring-white/10">
+                      {top3[1].photoUrl ? <img src={top3[1].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[1].name)}
                     </div>
                     <div className="font-bold text-center text-sm truncate w-full text-gray-900 dark:text-gray-100">{top3[1].name}</div>
-                    <div className="text-xs font-semibold text-slate-500">
+                    <div className="text-[11px] sm:text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400 text-center leading-tight line-clamp-2">
                       {viewMode === 'session' ? top3[1].sessionWins : top3[1].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[1].allTimeGamesPlayed} GP)` : ''}
                     </div>
                   </div>
@@ -125,10 +127,10 @@ export default function LeaderboardPanel() {
                   <div className="bg-white dark:bg-gray-900 w-full pt-5 pb-3 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-md">
                     <Trophy className="text-yellow-500 absolute -top-6 drop-shadow-lg" size={40} />
                     <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 text-white flex items-center justify-center font-bold text-lg shadow-lg mb-2 overflow-hidden ring-4 ring-yellow-50 dark:ring-yellow-900/30">
-                      {top3[0].photoUrl ? <img src={top3[0].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[0].name.substring(0, 2).toUpperCase()}
+                      {top3[0].photoUrl ? <img src={top3[0].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[0].name)}
                     </div>
                     <div className="font-black text-center text-base truncate w-full text-gray-900 dark:text-gray-100">{top3[0].name}</div>
-                    <div className="text-sm font-bold text-amber-600 dark:text-amber-500">
+                    <div className="text-xs sm:text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 text-center leading-tight line-clamp-2">
                       {viewMode === 'session' ? top3[0].sessionWins : top3[0].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[0].allTimeGamesPlayed} GP)` : ''}
                     </div>
                   </div>
@@ -143,11 +145,11 @@ export default function LeaderboardPanel() {
                 <div className="flex flex-col items-center flex-1 min-w-0 max-w-[140px] animate-slide-up" style={{ animationDelay: '0.2s' }}>
                   <div className="bg-white dark:bg-gray-900 w-full pt-4 pb-2 px-2 flex flex-col items-center rounded-t-3xl border border-gray-200 dark:border-gray-800 border-b-0 translate-y-2 relative shadow-sm">
                     <Medal className="text-orange-400 absolute -top-5 drop-shadow-md" size={32} />
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-300 to-orange-400 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden">
-                      {top3[2].photoUrl ? <img src={top3[2].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : top3[2].name.substring(0, 2).toUpperCase()}
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-300 to-orange-400 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 overflow-hidden ring-1 ring-black/10 dark:ring-white/10">
+                      {top3[2].photoUrl ? <img src={top3[2].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[2].name)}
                     </div>
                     <div className="font-bold text-center text-sm truncate w-full text-gray-900 dark:text-gray-100">{top3[2].name}</div>
-                    <div className="text-xs font-semibold text-slate-500">
+                    <div className="text-[11px] sm:text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400 text-center leading-tight line-clamp-2">
                       {viewMode === 'session' ? top3[2].sessionWins : top3[2].allTimeWins} Wins {viewMode === 'alltime' ? `(${top3[2].allTimeGamesPlayed} GP)` : ''}
                     </div>
                   </div>
@@ -197,39 +199,39 @@ export default function LeaderboardPanel() {
                       <div className="flex sm:hidden justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700 mt-2">
                         <div className="text-center">
                           <div className="text-xs text-gray-500 mb-1">Rank</div>
-                          <div className="font-bold text-gray-900 dark:text-gray-100">#{index + 1}</div>
+                          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">#{index + 1}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-xs text-gray-500 mb-1">W - L</div>
-                          <div className="font-bold text-gray-900 dark:text-gray-100">{wins} - {losses}</div>
+                          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{wins} - {losses}</div>
                         </div>
                         <div className="text-center w-24">
                           <div className="text-xs text-gray-500 mb-1">Win %</div>
                           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1.5">
                             <div 
-                              className={`h-2 rounded-full ${winPct >= 70 ? 'bg-emerald-500' : winPct >= 40 ? 'bg-blue-500' : 'bg-gray-400'}`}
+                              className={`h-2 rounded-full ${winPct >= 70 ? 'bg-emerald-500' : winPct >= 40 ? 'bg-teal-500' : 'bg-gray-400'}`}
                               style={{ width: `${winPct}%` }}
                             ></div>
                           </div>
-                          <div className="text-[10px] font-bold mt-1 text-gray-700 dark:text-gray-300">{winPct}%</div>
+                          <div className="text-[10px] font-bold tabular-nums mt-1 text-gray-700 dark:text-gray-300">{winPct}%</div>
                         </div>
                       </div>
 
                       {/* Desktop stats cols */}
-                      <div className="hidden sm:block col-span-2 text-center font-bold text-gray-900 dark:text-gray-100">{wins}</div>
-                      <div className="hidden sm:block col-span-2 text-center font-bold text-gray-900 dark:text-gray-100">{losses}</div>
+                      <div className="hidden sm:block col-span-2 text-center font-bold tabular-nums text-gray-900 dark:text-gray-100">{wins}</div>
+                      <div className="hidden sm:block col-span-2 text-center font-bold tabular-nums text-gray-900 dark:text-gray-100">{losses}</div>
                       <div className="hidden sm:flex col-span-3 items-center gap-3">
                         <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden border border-gray-200 dark:border-gray-700">
                           <div 
-                            className={`h-full rounded-full transition-all duration-1000 ${
-                              winPct >= 70 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 
-                              winPct >= 40 ? 'bg-gradient-to-r from-blue-400 to-blue-500' : 
+                            className={`h-full rounded-full transition-[width] duration-500 ${
+                              winPct >= 70 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 
+                              winPct >= 40 ? 'bg-gradient-to-r from-teal-400 to-emerald-500' : 
                               'bg-gradient-to-r from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500'
                             }`}
                             style={{ width: `${winPct}%` }}
                           />
                         </div>
-                        <span className="font-bold text-sm w-10 text-right text-gray-700 dark:text-gray-300">{winPct}%</span>
+                        <span className="font-bold tabular-nums text-sm w-10 text-right text-gray-700 dark:text-gray-300">{winPct}%</span>
                       </div>
                     </div>
                   );

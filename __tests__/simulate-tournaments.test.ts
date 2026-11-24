@@ -16,8 +16,6 @@ function runSimulation(playerCount: number, mode: SessionType) {
   console.log(`Initial Phase: ${state.phase}`);
   console.log(`Initial Pairs created: ${state.pairs.length}`);
 
-  let roundCount = 1;
-
   if (state.phase === 'POOL_PLAY') {
     console.log(`\n--- POOL PLAY ---`);
     for (let r = 1; r <= 4; r++) { // 4 rounds of pool play

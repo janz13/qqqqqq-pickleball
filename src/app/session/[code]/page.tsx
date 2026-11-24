@@ -1,16 +1,56 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useStore } from '@/lib/store';
-import { CourtStatus, PlayerStatus, Team } from '@/types/models';
+import { CourtStatus, PlayerStatus, Team, Session, Player, Court, Match, TournamentMatch } from '@/types/models';
 import { PlayerCard } from '@/components/ui/PlayerCard';
 import { CourtCard } from '@/components/ui/CourtCard';
 import { BracketTree } from '@/components/ui/BracketTree';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
-import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, Filter, GitMerge, ChevronDown, ChevronUp } from 'lucide-react';
+import { Users, LayoutGrid, Bell, CheckCircle, Megaphone, Trophy, Swords, Clock, GitMerge, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches, priorityOrder } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
+import { getInitials } from '@/utils/initials';
+
+interface CloudSessionState {
+  session: Session | null;
+  players: Player[];
+  courts: Court[];
+  matches: Match[];
+}
+
+interface CloudSessionRow {
+  id?: string;
+  join_code?: string;
+  is_active?: boolean;
+  updated_at?: string;
+  state_json?: CloudSessionState | null;
+}
+
+interface DisplayMatchItem {
+  id: string;
+  courtId: string;
+  courtLabel?: string;
+  roundGroupKey?: string;
+  roundGroupLabel?: string;
+  roundGroupSort?: number;
+  teamA: string[];
+  teamB: string[];
+  teamAId?: string | null;
+  teamBId?: string | null;
+  startedAtEpochMs: number;
+  endedAtEpochMs: number | null;
+  winner: Team | string | null;
+  status?: TournamentMatch['status'];
+  scoreA?: number | null;
+  scoreB?: number | null;
+  isBestOf3?: boolean;
+  games?: { winnerId: string; scoreA: number; scoreB: number }[];
+  teamAName?: string | null;
+  teamBName?: string | null;
+}
 
 export default function PlayerMonitorPage() {
   const params = useParams();
@@ -28,8 +68,22 @@ export default function PlayerMonitorPage() {
   const lastMatchId = useRef<string | null>(null);
   
   const [activeTab, setActiveTab] = useState<'queue' | 'games' | 'leaderboards' | 'tournament'>('queue');
+  const [hasUserPickedTab, setHasUserPickedTab] = useState(false);
   const [gamesFilter, setGamesFilter] = useState<'all' | 'mine'>('all');
   const [expandedRoundGroups, setExpandedRoundGroups] = useState<Record<string, boolean>>({});
+
+  const isPoolPlayPhase = Boolean(
+    session?.sessionType && session.sessionType !== 'OPEN_PLAY' && session.tournamentState?.phase === 'POOL_PLAY'
+  );
+  const isTournamentSession = Boolean(session?.sessionType && session.sessionType !== 'OPEN_PLAY');
+  const effectiveActiveTab: 'queue' | 'games' | 'leaderboards' | 'tournament' = hasUserPickedTab
+    ? activeTab
+    : (isPoolPlayPhase ? 'games' : (isTournamentSession ? 'tournament' : activeTab));
+
+  const handleTabChange = (tab: 'queue' | 'games' | 'leaderboards' | 'tournament') => {
+    setHasUserPickedTab(true);
+    setActiveTab(tab);
+  };
 
   // Track the latest cloud timestamp to NEVER allow stale data to overwrite newer data
   const lastCloudTimestamp = useRef<string>('');
@@ -38,10 +92,10 @@ export default function PlayerMonitorPage() {
   // We track updated_at timestamps so that stale poll data can never overwrite
   // a fresher realtime update (which was the root cause of the court glitch).
   useEffect(() => {
-    let channel: any = null;
+    let channel: { unsubscribe: () => void } | null = null;
     let isMounted = true;
     
-    const applyCloudState = (stateJson: any, updatedAt: string) => {
+    const applyCloudState = (stateJson: CloudSessionState | null | undefined, updatedAt: string) => {
       if (!isMounted || !stateJson) return;
       
       // CRITICAL: Compare timestamps numerically.
@@ -85,7 +139,7 @@ export default function PlayerMonitorPage() {
            router.replace(`/history/${data.id}?playerView=true`);
            return;
          }
-         applyCloudState(data.state_json, data.updated_at);
+         applyCloudState(data.state_json as CloudSessionState, data.updated_at);
        } else if (isMounted) {
          setIsLoading(false);
        }
@@ -98,15 +152,15 @@ export default function PlayerMonitorPage() {
            schema: 'public', 
            table: 'sessions', 
            filter: `join_code=eq.${canonicalCode}` 
-         }, (payload: any) => {
-           const newData = payload.new as any;
+         }, (payload: { new?: unknown }) => {
+           const newData = payload.new as CloudSessionRow | undefined;
            if (newData && isMounted) {
              if (newData.is_active === false || newData.state_json?.session?.isActive === false) {
                router.replace(`/history/${newData.id}?playerView=true`);
                return;
              }
              if (newData?.state_json) {
-               applyCloudState(newData.state_json, newData.updated_at);
+               applyCloudState(newData.state_json, newData.updated_at || '');
              }
            }
          })
@@ -281,9 +335,9 @@ export default function PlayerMonitorPage() {
 
   if (isLoading && (!session || session.joinCode?.toUpperCase() !== code)) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
         <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10 flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4"></div>
           <h1 className="text-xl font-bold mb-1">Loading Session...</h1>
           <p className="text-slate-400 text-sm">Connecting to session {code}</p>
         </div>
@@ -294,7 +348,7 @@ export default function PlayerMonitorPage() {
   if (!session || session.joinCode?.toUpperCase() !== code) {
     if (endedSession) {
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+        <div className="dark min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
           <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10">
             <h1 className="text-2xl font-bold mb-2">Session Ended</h1>
             <p className="text-slate-400">Redirecting to results...</p>
@@ -303,17 +357,17 @@ export default function PlayerMonitorPage() {
       );
     }
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+      <div className="dark min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
         <div className="glass-dark p-8 rounded-3xl text-center max-w-md w-full border border-white/10 space-y-4">
           <h1 className="text-2xl font-bold mb-2">Session Not Found</h1>
           <p className="text-slate-400">No active session found for code: <span className="font-mono font-bold text-white">{code}</span></p>
           <div className="flex flex-col gap-3 pt-2">
-            <a
+            <Link
               href="/"
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition-all inline-flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-colors duration-150 inline-flex items-center justify-center gap-2"
             >
               ← Back to Home
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -362,7 +416,7 @@ export default function PlayerMonitorPage() {
   const activeCourts = courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length;
 
   // Calculate matches for Games tab (loose check != null so undefined never breaks)
-  let displayMatches = [...matches];
+  let displayMatches: DisplayMatchItem[] = matches.map(m => ({ ...m }));
   const isTournament = session?.sessionType && session.sessionType !== 'OPEN_PLAY' && session.tournamentState;
 
   if (isTournament) {
@@ -450,6 +504,8 @@ export default function PlayerMonitorPage() {
         roundGroupSort,
         teamA,
         teamB,
+        teamAId: tm.teamAId,
+        teamBId: tm.teamBId,
         startedAtEpochMs: tm.startedAtEpochMs || 0,
         endedAtEpochMs: tm.endedAtEpochMs,
         winner,
@@ -460,13 +516,13 @@ export default function PlayerMonitorPage() {
         games: tm.games,
         teamAName: pairA?.name || null,
         teamBName: pairB?.name || null,
-      } as any;
+      };
     });
   }
 
-  const completedMatches = displayMatches.filter(m => (m as any).status === 'COMPLETED' || ((m as any).status == null && m.endedAtEpochMs != null));
-  const inProgressMatches = displayMatches.filter(m => (m as any).status === 'IN_PROGRESS' || ((m as any).status == null && m.endedAtEpochMs == null));
-  const pendingMatches = displayMatches.filter(m => (m as any).status === 'PENDING' || (m as any).status === 'READY');
+  const completedMatches = displayMatches.filter(m => m.status === 'COMPLETED' || (m.status == null && m.endedAtEpochMs != null));
+  const inProgressMatches = displayMatches.filter(m => m.status === 'IN_PROGRESS' || (m.status == null && m.endedAtEpochMs == null));
+  const pendingMatches = displayMatches.filter(m => m.status === 'PENDING' || m.status === 'READY');
   const sortedCompletedMatches = [...completedMatches].sort(
     (a, b) => (b.endedAtEpochMs ?? 0) - (a.endedAtEpochMs ?? 0)
   );
@@ -497,9 +553,29 @@ export default function PlayerMonitorPage() {
     return `${minutes}m ${seconds}s`;
   };
 
+  const renderLiveGamesPills = (m: DisplayMatchItem) => {
+    if (!m.games || m.games.length === 0) return null;
+    const seriesA = m.games.filter(g => (m.teamAId ? g.winnerId === m.teamAId : g.scoreA > g.scoreB)).length;
+    const seriesB = m.games.filter(g => (m.teamBId ? g.winnerId === m.teamBId : g.scoreB > g.scoreA)).length;
+    return (
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs font-mono tabular-nums">
+        {m.isBestOf3 && (
+          <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40 font-bold">
+            Series: {seriesA}-{seriesB}
+          </span>
+        )}
+        {m.games.map((g, i) => (
+          <span key={i} className="bg-slate-900/50 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+            G{i + 1}: {g.scoreA}-{g.scoreB}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-20 relative">
-      <header className="bg-slate-900 sticky top-0 z-20 px-4 py-3 border-b border-white/10 rounded-none mb-6 shadow-md">
+    <div className="dark min-h-screen bg-slate-950 text-slate-100 pb-20 relative">
+      <header className="bg-slate-900/95 backdrop-blur-md sm:sticky sm:top-0 z-20 px-4 py-3 border-b border-white/10 rounded-none mb-6 shadow-md">
         <div className="max-w-7xl mx-auto flex justify-between items-start gap-3">
           <div className="flex-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-black tracking-tight break-words line-clamp-2">{session.name}</h1>
@@ -509,14 +585,14 @@ export default function PlayerMonitorPage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
-            <div className="bg-slate-800/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl flex items-center gap-2 border border-slate-700 text-xs sm:text-sm">
-              <LayoutGrid size={15} className="text-blue-400" />
+            <div className="bg-slate-800/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl flex items-center gap-2 border border-slate-700 text-xs sm:text-sm tabular-nums">
+              <LayoutGrid size={15} className="text-emerald-400" />
               <span className="font-bold">{activeCourts}/{courts.length} Active</span>
             </div>
             <button
               type="button"
               onClick={() => setShowIdentifyModal(true)}
-              className="text-xs font-semibold text-blue-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"
+              className="text-xs font-semibold text-emerald-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"
             >
               {selectedPlayerId ? 'Change Player' : 'Select Player'}
             </button>
@@ -526,8 +602,8 @@ export default function PlayerMonitorPage() {
 
       {session.sessionType && session.sessionType !== 'OPEN_PLAY' && !session.tournamentState && (
         <div className="max-w-7xl mx-auto px-4 mb-6">
-          <div className="bg-blue-600/20 border border-blue-500/40 rounded-2xl p-6 text-center text-blue-200 space-y-2">
-            <Trophy size={36} className="mx-auto text-blue-400 animate-pulse" />
+          <div className="bg-emerald-600/20 border border-emerald-500/40 rounded-2xl p-6 text-center text-emerald-200 space-y-2">
+            <Trophy size={36} className="mx-auto text-emerald-400 animate-pulse" />
             <h3 className="text-xl font-bold text-white">Waiting for Tournament to Start</h3>
             <p className="text-sm text-slate-300 max-w-md mx-auto">
               The tournament has been announced! The organizer will generate the match bracket shortly.
@@ -537,11 +613,14 @@ export default function PlayerMonitorPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 mb-6">
-        <div className="flex bg-slate-800 p-1 rounded-2xl overflow-x-auto hide-scrollbar">
+        <div className="flex bg-slate-800 p-1 rounded-2xl overflow-x-auto hide-scrollbar" role="tablist">
           {(!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
             <button 
-              onClick={() => setActiveTab('queue')}
-              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'queue' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+              role="tab"
+              aria-selected={effectiveActiveTab === 'queue'}
+              data-active={effectiveActiveTab === 'queue' ? 'true' : 'false'}
+              onClick={() => handleTabChange('queue')}
+              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-colors duration-150 text-xs sm:text-base ${effectiveActiveTab === 'queue' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
             >
               <Users size={17} /> Queue
             </button>
@@ -549,30 +628,39 @@ export default function PlayerMonitorPage() {
           
           {session.sessionType && session.sessionType !== 'OPEN_PLAY' && (
             <button 
-              onClick={() => setActiveTab('tournament')}
-              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${(activeTab === 'tournament' || activeTab === 'queue') ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+              role="tab"
+              aria-selected={effectiveActiveTab === 'tournament' || effectiveActiveTab === 'queue'}
+              data-active={(effectiveActiveTab === 'tournament' || effectiveActiveTab === 'queue') ? 'true' : 'false'}
+              onClick={() => handleTabChange('tournament')}
+              className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-colors duration-150 text-xs sm:text-base ${(effectiveActiveTab === 'tournament' || effectiveActiveTab === 'queue') ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
             >
               <GitMerge size={17} /> Bracket
             </button>
           )}
 
           <button 
-            onClick={() => setActiveTab('games')}
-            className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'games' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            role="tab"
+            aria-selected={effectiveActiveTab === 'games'}
+            data-active={effectiveActiveTab === 'games' ? 'true' : 'false'}
+            onClick={() => handleTabChange('games')}
+            className={`flex-1 min-w-[96px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-colors duration-150 text-xs sm:text-base ${effectiveActiveTab === 'games' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
             <Swords size={17} /> Matches
           </button>
           
           <button 
-            onClick={() => setActiveTab('leaderboards')}
-            className={`flex-1 min-w-[104px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-all text-xs sm:text-base ${activeTab === 'leaderboards' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
+            role="tab"
+            aria-selected={effectiveActiveTab === 'leaderboards'}
+            data-active={effectiveActiveTab === 'leaderboards' ? 'true' : 'false'}
+            onClick={() => handleTabChange('leaderboards')}
+            className={`flex-1 min-w-[104px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl font-bold transition-colors duration-150 text-xs sm:text-base ${effectiveActiveTab === 'leaderboards' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}
           >
             <Trophy size={17} /> Standings
           </button>
         </div>
       </div>
 
-      {activeTab === 'queue' && (!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
+      {effectiveActiveTab === 'queue' && (!session.sessionType || session.sessionType === 'OPEN_PLAY') && (
         <main className="max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center gap-3 mb-4">
@@ -589,14 +677,14 @@ export default function PlayerMonitorPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <h2 className="text-3xl font-black tracking-tight">Queue</h2>
-                <div className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 border border-blue-500/20">
+                <div className="bg-emerald-600/20 text-emerald-400 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-1 border border-emerald-500/20 tabular-nums">
                   <Users size={14} /> {queuedPlayers.length}
                 </div>
               </div>
               {selectedPlayerId && (
                 <button 
                   onClick={() => setShowIdentifyModal(true)}
-                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 underline"
                 >
                   Change Player
                 </button>
@@ -612,10 +700,10 @@ export default function PlayerMonitorPage() {
                 <div className="space-y-3">
                   {queuedPlayers.map((player, idx) => (
                     <div key={player.id} className="flex items-center gap-4">
-                      <span className="text-xl font-black text-slate-600 w-8 text-right font-mono">
+                      <span className="text-xl font-black text-slate-600 w-8 text-right font-mono tabular-nums">
                         {idx + 1}
                       </span>
-                      <div className={`flex-1 ${selectedPlayerId === player.id ? 'ring-2 ring-blue-500 rounded-2xl' : ''}`}>
+                      <div className={`flex-1 ${selectedPlayerId === player.id ? 'ring-2 ring-emerald-500 rounded-2xl' : ''}`}>
                         <PlayerCard player={player} compact />
                       </div>
                     </div>
@@ -634,7 +722,9 @@ export default function PlayerMonitorPage() {
           {(session.showNextUpToPlayers ?? true) && upcomingBatches.length > 0 && (
             <div className="lg:col-span-3 space-y-4 mt-4">
               <h2 className="text-2xl font-black tracking-tight flex items-center gap-3 flex-wrap">
-                <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">⚡</span>
+                <span className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-400">
+                  <Zap size={16} />
+                </span>
                 Next Up
                 {openCourtsCount === 0 && (
                   <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
@@ -645,11 +735,11 @@ export default function PlayerMonitorPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {upcomingBatches.map((batch, idx) => (
                   <div key={idx} className="glass-dark rounded-2xl p-4 border border-white/5">
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Match {idx + 1}</div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 tabular-nums">Match {idx + 1}</div>
                     <div className="space-y-2">
                       <div className="flex flex-col gap-1">
                         {batch.teamA.map(p => (
-                          <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-blue-400' : ''}`}>
+                          <div key={p.id} className={`text-sm font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 ${selectedPlayerId === p.id ? 'ring-2 ring-emerald-400' : ''}`}>
                             {p.name}
                           </div>
                         ))}
@@ -671,17 +761,31 @@ export default function PlayerMonitorPage() {
         </main>
       )}
 
-      {activeTab === 'games' && (
+      {effectiveActiveTab === 'games' && (
         <main className="max-w-7xl mx-auto px-4 space-y-6">
+          {isPoolPlayPhase && (
+            <div className="bg-emerald-600/15 border border-emerald-500/30 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm text-emerald-100 font-medium">
+                Pool Play is underway — Round {session?.tournamentState?.currentPoolRound ?? 1}. View your scheduled matchups below.
+              </p>
+              <button
+                type="button"
+                onClick={() => handleTabChange('leaderboards')}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors"
+              >
+                View Pool Standings
+              </button>
+            </div>
+          )}
           <div className="glass-dark rounded-3xl p-6 border border-white/5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                   <Swords size={22} />
                 </div>
                 <div>
                   <h2 className="text-2xl font-black tracking-tight">Session Games</h2>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-400 tabular-nums">
                     {completedMatches.length} completed {inProgressMatches.length > 0 ? `• ${inProgressMatches.length} live on courts` : ''}
                   </p>
                 </div>
@@ -691,13 +795,13 @@ export default function PlayerMonitorPage() {
                 <div className="flex bg-slate-800 p-1 rounded-xl self-start sm:self-auto">
                   <button
                     onClick={() => setGamesFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${gamesFilter === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors duration-150 tabular-nums ${gamesFilter === 'all' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                   >
                     All Games ({completedMatches.length})
                   </button>
                   <button
                     onClick={() => setGamesFilter('mine')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${gamesFilter === 'mine' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors duration-150 tabular-nums ${gamesFilter === 'mine' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                   >
                     My Games ({completedMatches.filter(m => m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId)).length + myInProgressMatches.length})
                   </button>
@@ -708,8 +812,8 @@ export default function PlayerMonitorPage() {
             {/* In-Progress Live Games */}
             {gamesFilter === 'all' && inProgressMatches.length > 0 && (
               <div className="mb-6 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   Currently Playing on Courts
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -721,9 +825,9 @@ export default function PlayerMonitorPage() {
                     const isMyMatch = selectedPlayerId && (m.teamA.includes(selectedPlayerId) || m.teamB.includes(selectedPlayerId));
 
                     return (
-                      <div key={m.id} className={`bg-slate-800/80 rounded-2xl p-4 border ${isMyMatch ? 'border-blue-500 shadow-md shadow-blue-500/10' : 'border-slate-700'}`}>
+                      <div key={m.id} className={`bg-slate-800/80 rounded-2xl p-4 border ${isMyMatch ? 'border-emerald-500 shadow-md shadow-emerald-500/10' : 'border-slate-700'}`}>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                             {courtName}
                           </span>
                           <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
@@ -740,15 +844,7 @@ export default function PlayerMonitorPage() {
                             {teamBPlayers.map(p => p?.name).join(' & ')}
                           </div>
                         </div>
-                        {(m as any).games && (m as any).games.length > 0 && (
-                          <div className="mt-3 flex items-center justify-center gap-2 text-xs font-mono">
-                            {(m as any).games.map((g: any, i: number) => (
-                              <span key={i} className="bg-slate-900/50 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
-                                G{i+1}: {g.scoreA}-{g.scoreB}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        {renderLiveGamesPills(m)}
                       </div>
                     );
                   })}
@@ -771,9 +867,9 @@ export default function PlayerMonitorPage() {
                     const teamBPlayers = m.teamB.map(id => players.find(p => p.id === id)).filter(Boolean);
 
                     return (
-                      <div key={m.id} className="bg-blue-950/40 rounded-2xl p-4 border border-blue-500 shadow-md shadow-blue-500/10">
+                      <div key={m.id} className="bg-emerald-950/40 rounded-2xl p-4 border border-emerald-500 shadow-md shadow-emerald-500/10">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                             {courtName}
                           </span>
                           <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
@@ -790,15 +886,7 @@ export default function PlayerMonitorPage() {
                             {teamBPlayers.map(p => p?.name).join(' & ')}
                           </div>
                         </div>
-                        {(m as any).games && (m as any).games.length > 0 && (
-                          <div className="mt-3 flex items-center justify-center gap-2 text-xs font-mono">
-                            {(m as any).games.map((g: any, i: number) => (
-                              <span key={i} className="bg-slate-900/50 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
-                                G{i+1}: {g.scoreA}-{g.scoreB}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        {renderLiveGamesPills(m)}
                       </div>
                     );
                   })}
@@ -828,16 +916,16 @@ export default function PlayerMonitorPage() {
                             {courtName}
                           </span>
                           <span className="text-xs font-semibold text-slate-400">
-                            {(m as any).status === 'READY' ? 'Ready to Play' : 'Scheduled'}
+                            {m.status === 'READY' ? 'Ready to Play' : 'Scheduled'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <div className="flex-1 font-semibold text-slate-200">
-                            {teamAPlayers.length > 0 ? teamAPlayers.map(p => p?.name).join(' & ') : ((m as any).teamAName || 'Team A')}
+                            {teamAPlayers.length > 0 ? teamAPlayers.map(p => p?.name).join(' & ') : (m.teamAName || 'Team A')}
                           </div>
                           <span className="text-xs font-bold text-slate-500">VS</span>
                           <div className="flex-1 font-semibold text-slate-200 text-right">
-                            {teamBPlayers.length > 0 ? teamBPlayers.map(p => p?.name).join(' & ') : ((m as any).teamBName || 'Team B')}
+                            {teamBPlayers.length > 0 ? teamBPlayers.map(p => p?.name).join(' & ') : (m.teamBName || 'Team B')}
                           </div>
                         </div>
                       </div>
@@ -858,12 +946,12 @@ export default function PlayerMonitorPage() {
                 <p className="text-xs text-slate-400 mt-1">Finished games will show up here automatically</p>
               </div>
             ) : (() => {
-              const renderCompletedMatchCard = (match: any) => {
+              const renderCompletedMatchCard = (match: DisplayMatchItem) => {
                 const matchNumber = matchNumberMap.get(match.id) ?? 1;
                 const court = courts.find(c => c.id === match.courtId);
                 const courtName = match.courtLabel || court?.label || 'Court';
-                const teamAPlayers = match.teamA.map((id: string) => players.find(p => p.id === id)).filter(Boolean);
-                const teamBPlayers = match.teamB.map((id: string) => players.find(p => p.id === id)).filter(Boolean);
+                const teamAPlayers = match.teamA.map((id: string) => players.find(p => p.id === id)).filter((p): p is Player => Boolean(p));
+                const teamBPlayers = match.teamB.map((id: string) => players.find(p => p.id === id)).filter((p): p is Player => Boolean(p));
                 const isWinnerA = (match.winner as string) === Team.A || (match.winner as string) === 'A';
                 const isWinnerB = (match.winner as string) === Team.B || (match.winner as string) === 'B';
                 const isMyMatch = selectedPlayerId && (match.teamA.includes(selectedPlayerId) || match.teamB.includes(selectedPlayerId));
@@ -874,30 +962,30 @@ export default function PlayerMonitorPage() {
                 return (
                   <div
                     key={match.id}
-                    className={`bg-slate-800/60 rounded-2xl border p-4 transition-all ${
-                      isMyMatch ? 'border-blue-500/60 bg-blue-950/20 shadow-md shadow-blue-500/5' : 'border-slate-700/60'
+                    className={`bg-slate-800/60 rounded-2xl border p-4 transition-colors duration-150 ${
+                      isMyMatch ? 'border-emerald-500/60 bg-emerald-950/20 shadow-md shadow-emerald-500/5' : 'border-slate-700/60'
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/5 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                        <span className="font-mono tabular-nums font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
                           Match #{matchNumber}
                         </span>
                         <span className="text-slate-400 font-medium">
                           {courtName}
                         </span>
                         {isMyMatch && (
-                          <span className={`px-2 py-0.5 rounded font-bold ${
+                          <span className={`px-2 py-0.5 rounded font-bold inline-flex items-center gap-1 ${
                             myTeamWon ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
                           }`}>
-                            {myTeamWon ? '🏆 Victory' : 'Played'}
+                            {myTeamWon ? <><Trophy size={11} /> Victory</> : 'Played'}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-slate-400">
-                        {(match as any).games && (match as any).games.length > 0 && (
+                      <div className="flex items-center gap-3 text-slate-400 tabular-nums">
+                        {match.games && match.games.length > 0 && (
                           <div className="flex items-center gap-1.5 mr-2 font-mono">
-                            {(match as any).games.map((g: any, i: number) => (
+                            {match.games.map((g, i) => (
                               <span key={i} className="px-1.5 py-0.5 bg-slate-900/50 rounded border border-slate-700">
                                 {g.scoreA}-{g.scoreB}
                               </span>
@@ -918,11 +1006,11 @@ export default function PlayerMonitorPage() {
                       }`}>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {(match as any).teamAName || 'Team 1'}
+                            {match.teamAName || 'Team 1'}
                           </span>
                           <div className="flex items-center gap-2">
                             {match.scoreA != null && (
-                              <span className="font-mono text-lg font-black text-slate-200">{match.scoreA}</span>
+                              <span className="font-mono tabular-nums text-lg font-black text-slate-200">{match.scoreA}</span>
                             )}
                             {isWinnerA && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
@@ -932,19 +1020,19 @@ export default function PlayerMonitorPage() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          {teamAPlayers.map((p: any, idx: number) => (
-                            <div key={p?.id || idx} className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {p?.photoUrl ? (
+                          {teamAPlayers.map((p, idx) => (
+                            <div key={p.id || idx} className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ring-white/10">
+                                {p.photoUrl ? (
                                   <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
                                 ) : (
-                                  (p?.name || '??').substring(0, 2).toUpperCase()
+                                  getInitials(p.name || '??')
                                 )}
                               </div>
                               <span className={`text-sm font-semibold truncate ${
-                                selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                                selectedPlayerId === p.id ? 'text-emerald-300 font-bold underline' : 'text-slate-200'
                               }`}>
-                                {p?.name || 'Player'}
+                                {p.name || 'Player'}
                               </span>
                             </div>
                           ))}
@@ -957,11 +1045,11 @@ export default function PlayerMonitorPage() {
                       }`}>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {(match as any).teamBName || 'Team 2'}
+                            {match.teamBName || 'Team 2'}
                           </span>
                           <div className="flex items-center gap-2">
                             {match.scoreB != null && (
-                              <span className="font-mono text-lg font-black text-slate-200">{match.scoreB}</span>
+                              <span className="font-mono tabular-nums text-lg font-black text-slate-200">{match.scoreB}</span>
                             )}
                             {isWinnerB && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white flex items-center gap-1">
@@ -971,19 +1059,19 @@ export default function PlayerMonitorPage() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          {teamBPlayers.map((p: any, idx: number) => (
-                            <div key={p?.id || idx} className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {p?.photoUrl ? (
+                          {teamBPlayers.map((p, idx) => (
+                            <div key={p.id || idx} className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-rose-500 to-orange-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ring-white/10">
+                                {p.photoUrl ? (
                                   <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover rounded-full" />
                                 ) : (
-                                  (p?.name || '??').substring(0, 2).toUpperCase()
+                                  getInitials(p.name || '??')
                                 )}
                               </div>
                               <span className={`text-sm font-semibold truncate ${
-                                selectedPlayerId === p?.id ? 'text-blue-300 font-bold underline' : 'text-slate-200'
+                                selectedPlayerId === p.id ? 'text-emerald-300 font-bold underline' : 'text-slate-200'
                               }`}>
-                                {p?.name || 'Player'}
+                                {p.name || 'Player'}
                               </span>
                             </div>
                           ))}
@@ -1003,8 +1091,8 @@ export default function PlayerMonitorPage() {
               }
 
               // Group completed tournament matches by round; auto-collapse completed earlier rounds
-              const groupMap = new Map<string, { key: string; label: string; sort: number; items: any[] }>();
-              filteredCompletedMatches.forEach((m: any) => {
+              const groupMap = new Map<string, { key: string; label: string; sort: number; items: DisplayMatchItem[] }>();
+              filteredCompletedMatches.forEach((m) => {
                 const key = m.roundGroupKey || 'other';
                 if (!groupMap.has(key)) {
                   groupMap.set(key, {
@@ -1051,7 +1139,7 @@ export default function PlayerMonitorPage() {
                               ✓ {grp.items.length} completed
                             </span>
                             {hasMyMatch && (
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">
                                 You Played
                               </span>
                             )}
@@ -1076,7 +1164,7 @@ export default function PlayerMonitorPage() {
         </main>
       )}
 
-      {activeTab === 'leaderboards' && (
+      {effectiveActiveTab === 'leaderboards' && (
         <main className="max-w-7xl mx-auto px-4">
           <div className="glass-dark rounded-3xl p-6 border border-white/5">
             <h2 className="text-2xl font-black tracking-tight mb-6 flex items-center gap-3">
@@ -1178,7 +1266,7 @@ export default function PlayerMonitorPage() {
                   placeholder="Search your name..."
                   autoFocus
                   aria-label="Search player name"
-                  className="w-full px-4 py-3 pr-10 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 pr-10 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 {identitySearch && (
                   <button
@@ -1224,11 +1312,11 @@ export default function PlayerMonitorPage() {
       )}
 
       {/* TOURNAMENT TAB */}
-      {(activeTab === 'tournament' || (activeTab === 'queue' && session.sessionType && session.sessionType !== 'OPEN_PLAY')) && (
+      {(effectiveActiveTab === 'tournament' || (effectiveActiveTab === 'queue' && session.sessionType && session.sessionType !== 'OPEN_PLAY')) && (
         <main className="max-w-7xl mx-auto px-4">
           {!session.tournamentState ? (
             <div className="glass-dark p-12 rounded-3xl text-center border border-white/5 space-y-4 my-8">
-              <div className="w-16 h-16 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto">
+              <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
                 <Trophy size={32} />
               </div>
               <h2 className="text-2xl font-black text-white">Waiting for Tournament to Start</h2>
@@ -1253,14 +1341,14 @@ export default function PlayerMonitorPage() {
                     <div className="flex flex-wrap justify-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setActiveTab('games')}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
+                        onClick={() => handleTabChange('games')}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-colors"
                       >
                         View Pool Matches
                       </button>
                       <button
                         type="button"
-                        onClick={() => setActiveTab('leaderboards')}
+                        onClick={() => handleTabChange('leaderboards')}
                         className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold transition-colors border border-slate-700"
                       >
                         View Pool Standings

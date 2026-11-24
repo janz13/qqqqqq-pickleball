@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
@@ -39,13 +39,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const isTournament = session?.sessionType && session.sessionType !== SessionType.OPEN_PLAY;
 
-  const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
-    { id: 'courts', label: isTournament ? 'Tournament' : 'Courts', icon: LayoutDashboard },
-    { id: 'roster', label: 'Roster', icon: Users },
-    { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-    { id: 'history', label: 'History', icon: ClipboardList },
-    { id: 'announcements', label: 'Announce', icon: Megaphone },
-    { id: 'settings', label: 'Settings', icon: Settings },
+  const tabs: { id: Tab; label: string; shortLabel: string; icon: LucideIcon }[] = [
+    { id: 'courts', label: isTournament ? 'Tournament' : 'Courts', shortLabel: isTournament ? 'Tourney' : 'Courts', icon: LayoutDashboard },
+    { id: 'roster', label: 'Roster', shortLabel: 'Roster', icon: Users },
+    { id: 'leaderboard', label: 'Leaderboard', shortLabel: 'Ranks', icon: Trophy },
+    { id: 'history', label: 'History', shortLabel: 'History', icon: ClipboardList },
+    { id: 'announcements', label: 'Announce', shortLabel: 'Announce', icon: Megaphone },
+    { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
   ];
 
   return (
@@ -54,10 +54,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <aside className="hidden lg:flex flex-col w-64 glass dark:glass-dark m-4 mr-0 rounded-2xl overflow-hidden z-10 animate-fade-in">
         <div className="p-6 border-b border-slate-200/50 dark:border-slate-700/50">
           <div className="flex justify-between items-start gap-2 mb-3">
-            <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 break-words flex-1 min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100 break-words line-clamp-2 flex-1 min-w-0">
               {session?.name || 'Pickleball Session'}
             </h1>
-            <div className="shrink-0 pt-1">
+            <div className="shrink-0 pt-0.5">
               <ThemeToggle />
             </div>
           </div>
@@ -65,12 +65,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex flex-col gap-2">
               <button 
                 onClick={() => setShowQR(true)}
-                className="px-3 py-1.5 w-full bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-semibold transition-all duration-200 border border-blue-500/20 shadow-sm"
+                className="px-3 py-1.5 w-full bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm font-semibold transition-colors duration-150 border border-emerald-500/20 shadow-sm"
               >
-                Code: <span className="tracking-widest">{session.joinCode}</span>
+                Code: <span className="tracking-widest font-mono tabular-nums">{session.joinCode}</span>
               </button>
               <button 
-                onClick={() => window.open(`/session/${session.joinCode}`, '_blank')}
+                onClick={() => window.open(`/session/${session.joinCode}?preview=1`, '_blank', 'noopener,noreferrer')}
                 className="px-3 py-1.5 w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 View as Player
@@ -87,10 +87,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-150 ${
                   isActive 
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20 scale-[1.02]' 
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/20' 
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
                 }`}
               >
                 <Icon size={20} className={isActive ? 'text-white' : ''} />
@@ -149,12 +149,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setShowQR(true)}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-700 dark:text-blue-300 rounded-xl text-sm font-bold transition-all border border-blue-500/20"
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-sm font-bold transition-colors border border-emerald-500/20"
               >
-                Code: <span className="tracking-widest font-mono text-base">{session.joinCode}</span>
+                Code: <span className="tracking-widest font-mono tabular-nums text-base">{session.joinCode}</span>
               </button>
               <button 
-                onClick={() => window.open(`/session/${session.joinCode}`, '_blank')}
+                onClick={() => window.open(`/session/${session.joinCode}?preview=1`, '_blank', 'noopener,noreferrer')}
                 className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors"
               >
                 Player View
@@ -169,23 +169,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </main>
 
       {/* Mobile & Tablet Bottom Navigation */}
-      <nav aria-label="Dashboard navigation" className="lg:hidden fixed bottom-0 left-0 right-0 glass dark:glass-dark rounded-t-2xl rounded-b-none border-t border-white/20 pb-safe z-50">
-        <div className="flex justify-around items-center h-16 px-2">
+      <nav aria-label="Dashboard navigation" className="lg:hidden fixed bottom-0 left-0 right-0 glass dark:glass-dark rounded-t-2xl rounded-b-none border-t border-slate-200/80 dark:border-slate-700/70 pb-safe z-50">
+        <div className="grid grid-cols-6 items-center h-16 px-1">
           {tabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
                 aria-label={tab.label}
                 title={tab.label}
-                className="flex flex-col items-center justify-center w-full h-full space-y-1"
+                className={`flex flex-col items-center justify-center h-full gap-0.5 px-1 transition-colors duration-150 ${
+                  isActive
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
               >
-                <div className={`p-1.5 rounded-full transition-all duration-200 ${isActive ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                  <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                <div className={`px-2.5 py-1 rounded-full transition-colors duration-150 ${isActive ? 'bg-emerald-100 dark:bg-emerald-900/40' : ''}`}>
+                  <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
                 </div>
-                {isActive && <div className="w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />}
+                <span className={`text-[10px] leading-none truncate max-w-full ${isActive ? 'font-bold' : 'font-medium'}`}>
+                  {tab.shortLabel}
+                </span>
               </button>
             );
           })}
@@ -210,11 +217,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="space-y-4 mb-6 text-gray-700 dark:text-gray-300">
               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                 <span className="font-semibold">Total Matches Played:</span>
-                <span className="text-xl font-bold">{matches.length + (session?.tournamentState?.matches.filter(m => m.status === 'COMPLETED').length || 0)}</span>
+                <span className="text-xl font-bold tabular-nums">{matches.length + (session?.tournamentState?.matches.filter(m => m.status === 'COMPLETED').length || 0)}</span>
               </div>
               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                 <span className="font-semibold">Total Players:</span>
-                <span className="text-xl font-bold">{players.length}</span>
+                <span className="text-xl font-bold tabular-nums">{players.length}</span>
               </div>
               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                 <span className="font-semibold">Top Player:</span>

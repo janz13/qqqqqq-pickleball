@@ -1,4 +1,5 @@
-import { TournamentState, TournamentPair, TournamentMatch, Player, SessionType } from '@/types/models';
+import { TournamentState, TournamentPair, Player, SessionType } from '@/types/models';
+import { getInitials } from '@/utils/initials';
 
 export interface RankedTournamentItem {
   id: string; // pairId or playerId
@@ -30,11 +31,11 @@ export function getTeamName(pair: TournamentPair, players: Player[]): string {
 }
 
 export function getTeamInitials(pair: TournamentPair, players: Player[]): string {
-  if (pair.name) return pair.name.substring(0, 2).toUpperCase();
+  if (pair.name) return getInitials(pair.name);
   const p1 = players.find(p => p.id === pair.player1Id);
   const p2 = players.find(p => p.id === pair.player2Id);
   if (p1 && p2) return `${p1.name.charAt(0)}${p2.name.charAt(0)}`.toUpperCase();
-  if (p1) return p1.name.substring(0, 2).toUpperCase();
+  if (p1) return getInitials(p1.name);
   return 'T';
 }
 
@@ -115,7 +116,7 @@ export function rankTournament(
     return playerScores.map((item, idx) => ({
       id: item.player.id,
       name: item.player.name,
-      initials: item.player.name.substring(0, 2).toUpperCase(),
+      initials: getInitials(item.player.name),
       photoUrl: item.player.photoUrl,
       rank: idx + 1,
       wins: item.matchesWon,

@@ -1,4 +1,4 @@
-import { Player, TournamentState, TournamentPair, TournamentMatch, SessionType, Team } from '@/types/models';
+import { Player, TournamentState, TournamentPair, TournamentMatch, SessionType } from '@/types/models';
 
 // ─────────────────────────────────────────────────────────────
 //  Utility: Fisher-Yates Shuffle (uniform random distribution)
@@ -152,7 +152,8 @@ export function initializeTournament(
  * Builds the next round of pool play matches using a simple Swiss system.
  * Avoids rematches from previous rounds when possible.
  */
-export function buildPoolPlayRound(state: TournamentState, courtsCount: number): TournamentMatch[] {
+export function buildPoolPlayRound(state: TournamentState, courtsCount?: number): TournamentMatch[] {
+  void courtsCount;
   // Sort pairs by wins, then point diff
   const sortedPairs = [...state.pairs].sort((a, b) => {
     if ((a.poolPlayWins ?? 0) !== (b.poolPlayWins ?? 0)) return (b.poolPlayWins ?? 0) - (a.poolPlayWins ?? 0);

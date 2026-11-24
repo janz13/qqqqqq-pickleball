@@ -11,7 +11,7 @@
  */
 
 import { useStore } from '../src/lib/store';
-import { CourtStatus, Match, Player, PlayerStatus, Team, createPlayer } from '../src/types/models';
+import { CourtStatus, Match, PlayerStatus, Team, createPlayer } from '../src/types/models';
 
 jest.setTimeout(180_000);
 
@@ -385,7 +385,6 @@ describe('Full Lifecycle Simulation — 12 scenarios, varied parameters, invaria
   });
 
   afterAll(() => {
-    // eslint-disable-next-line no-console
     console.log('\nSIMULATION REPORT\n' + JSON.stringify(reports, null, 1));
   });
 

@@ -9,8 +9,8 @@ import QRCodeDisplay from '@/components/ui/QRCodeDisplay';
 import { BracketTree, TournamentMatch as BracketMatch } from '@/components/ui/BracketTree';
 import { TournamentLeaderboard } from '@/components/ui/TournamentLeaderboard';
 import Link from 'next/link';
-import { Trophy, Clock, Flame, Users, CheckCircle2, PlayCircle, Award, Crown, Shield, Megaphone, X, ArrowLeft } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { Trophy, Users, PlayCircle, Crown, Megaphone, X, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
 import { priorityOrder } from '@/engine/queue-engine';
 
 interface CloudSessionState {
@@ -41,8 +41,6 @@ export default function TVDisplayPage() {
   useEffect(() => {
     let channel: { unsubscribe: () => void } | null = null;
     let isMounted = true;
-    setIsLoading(true);
-    setIsEnded(false);
 
     const applyCloudState = (stateJson: Partial<CloudSessionState> | null, updatedAt: string, forceEnded = false) => {
       if (!isMounted || !stateJson) return;
@@ -143,8 +141,8 @@ export default function TVDisplayPage() {
 
   if (isLoading && (!session || session.joinCode?.toUpperCase() !== code)) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-6"></div>
+      <div className="dark min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-emerald-500 mb-6"></div>
         <div className="text-3xl font-black mb-2">Connecting TV Display...</div>
         <div className="text-slate-400 font-mono text-lg">Session Code: {code}</div>
       </div>
@@ -153,7 +151,7 @@ export default function TVDisplayPage() {
 
   if (!session || session.joinCode?.toUpperCase() !== code) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-center">
+      <div className="dark min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-center">
         <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-10 max-w-md w-full space-y-5 shadow-2xl">
           <h1 className="text-3xl font-black text-white">Session Not Found</h1>
           <p className="text-slate-400 text-base">
@@ -161,7 +159,7 @@ export default function TVDisplayPage() {
           </p>
           <Link
             href="/"
-            className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base inline-flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base inline-flex items-center justify-center gap-2 transition-colors"
           >
             <ArrowLeft size={18} />
             Back to Home
@@ -292,7 +290,7 @@ export default function TVDisplayPage() {
       .slice(0, 5);
 
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans select-none">
+      <div className="dark min-h-screen bg-slate-950 text-white flex flex-col font-sans select-none">
         <header className="bg-slate-900/90 px-6 py-4 flex justify-between items-center border-b border-slate-800 backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-4 min-w-0">
             <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center shrink-0">
@@ -304,11 +302,11 @@ export default function TVDisplayPage() {
                 <span className="text-slate-300 uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700">
                   Session Ended
                 </span>
-                <span className="text-slate-400">{completedTotal} Matches • {players.length} Players</span>
+                <span className="text-slate-400 tabular-nums">{completedTotal} Matches • {players.length} Players</span>
               </div>
             </div>
           </div>
-          <div className="text-3xl md:text-4xl font-black font-mono tracking-tighter text-slate-300">
+          <div className="text-3xl md:text-4xl font-black font-mono tabular-nums tracking-tighter text-slate-300">
             {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         </header>
@@ -325,7 +323,7 @@ export default function TVDisplayPage() {
             </div>
           ) : (
             <div className="w-full bg-slate-900/70 border border-slate-800 rounded-3xl p-6 space-y-4">
-              <h3 className="text-sm font-black uppercase tracking-widest text-indigo-400">Session Leaderboard</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-emerald-400">Session Leaderboard</h3>
               {topPlayers.length === 0 ? (
                 <p className="text-slate-500 text-center py-4">No player stats recorded.</p>
               ) : (
@@ -333,10 +331,10 @@ export default function TVDisplayPage() {
                   {topPlayers.map((p, idx) => (
                     <div key={p.id} className="flex items-center justify-between bg-slate-950/70 border border-slate-800 rounded-2xl px-4 py-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="font-mono font-black text-lg text-amber-400 w-6">#{idx + 1}</span>
+                        <span className="font-mono tabular-nums font-black text-lg text-amber-400 w-6">#{idx + 1}</span>
                         <span className="font-bold text-white truncate">{p.name}</span>
                       </div>
-                      <span className="font-mono text-sm font-bold text-emerald-400 shrink-0">
+                      <span className="font-mono tabular-nums text-sm font-bold text-emerald-400 shrink-0">
                         {p.sessionWins}W - {p.sessionLosses}L ({p.sessionGamesPlayed} GP)
                       </span>
                     </div>
@@ -359,26 +357,26 @@ export default function TVDisplayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden lg:overflow-hidden flex flex-col font-sans select-none">
+    <div className="dark min-h-screen bg-slate-950 text-white overflow-x-hidden lg:overflow-hidden flex flex-col font-sans select-none">
       {/* Arena TV PA Announcement Banner */}
       {activeAnnouncement && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-3xl shadow-2xl border border-indigo-400/50 flex items-center gap-4 animate-fade-in"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-5 rounded-3xl shadow-2xl border border-emerald-400/50 flex items-center gap-4 animate-fade-in"
         >
           <div className="p-3 bg-white/15 rounded-2xl shrink-0">
             <Megaphone size={28} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-black uppercase tracking-widest text-indigo-200">PA Announcement</div>
+            <div className="text-xs font-black uppercase tracking-widest text-emerald-100">PA Announcement</div>
             <div className="text-xl font-bold leading-snug break-words">{activeAnnouncement.text}</div>
           </div>
           <button
             type="button"
             onClick={() => setActiveAnnouncement(null)}
             aria-label="Dismiss announcement"
-            className="p-2 rounded-xl hover:bg-white/15 text-indigo-100 transition-colors shrink-0"
+            className="p-2 rounded-xl hover:bg-white/15 text-emerald-100 transition-colors shrink-0"
           >
             <X size={20} />
           </button>
@@ -388,14 +386,14 @@ export default function TVDisplayPage() {
       {/* ─── TV Header ─── */}
       <header className="bg-slate-900/90 px-6 py-4 flex justify-between items-center border-b border-slate-800 backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-5">
-          <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
             {isTournament ? <Trophy size={28} className="text-white" /> : <span className="text-2xl font-black">Q</span>}
           </div>
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">{session.name}</h1>
               {isTournament && (
-                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                   {tournamentTypeLabel}
                 </span>
               )}
@@ -405,11 +403,11 @@ export default function TVDisplayPage() {
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 {isTournament ? phaseBadgeLabel : 'LIVE'}
               </span>
-              <span className="text-slate-400">
+              <span className="text-slate-400 tabular-nums">
                 {courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length} / {courts.length} Courts Active
               </span>
               {isTournament && tournamentState && (
-                <span className="text-slate-400 hidden sm:inline">
+                <span className="text-slate-400 hidden sm:inline tabular-nums">
                   {tournamentState.pairs.length} Teams • {tournamentState.matches.filter(m => m.status === 'COMPLETED').length} / {tournamentState.matches.length} Matches Done
                 </span>
               )}
@@ -418,7 +416,7 @@ export default function TVDisplayPage() {
         </div>
 
         {/* Digital Clock */}
-        <div className="text-4xl md:text-5xl font-black font-mono tracking-tighter text-slate-200 drop-shadow-md">
+        <div className="text-4xl md:text-5xl font-black font-mono tabular-nums tracking-tighter text-slate-200 drop-shadow-md">
           {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>
       </header>
@@ -463,36 +461,47 @@ export default function TVDisplayPage() {
                           <th className="py-3 px-4 text-center">Pts Scored</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60 text-sm">
+                      <tbody className="divide-y divide-slate-800/60 text-sm tabular-nums">
                         {poolStandings.map((pair, idx) => {
-                          const isTop = idx < 4;
+                          const ubCount = Math.ceil(poolStandings.length / 2);
+                          const isTop = poolStandings.length >= 2 && idx < ubCount;
+                          const showCutline = poolStandings.length >= 4 && idx === ubCount - 1;
                           return (
-                            <tr key={pair.id} className={isTop ? 'bg-indigo-500/5' : ''}>
-                              <td className="py-3.5 px-4 font-mono font-black text-slate-400">
-                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black ${
-                                  idx === 0 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
-                                  idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
-                                  idx === 2 ? 'bg-amber-600/20 text-amber-300 border border-amber-600/30' :
-                                  'bg-slate-800 text-slate-400'
-                                }`}>
-                                  {idx + 1}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4 font-extrabold text-white text-base">
-                                {pair.name || getTeamName(pair.id)}
-                              </td>
-                              <td className="py-3.5 px-4 text-center font-black text-emerald-400 text-base">
-                                {pair.poolPlayWins}W
-                              </td>
-                              <td className="py-3.5 px-4 text-center font-mono font-bold text-sm">
-                                <span className={pair.poolPlayPointDiff > 0 ? 'text-emerald-400 font-black' : pair.poolPlayPointDiff < 0 ? 'text-rose-400 font-black' : 'text-slate-400'}>
-                                  {pair.poolPlayPointDiff > 0 ? '+' : ''}{pair.poolPlayPointDiff}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4 text-center font-mono text-slate-300">
-                                {pair.poolPlayPointsScored}
-                              </td>
-                            </tr>
+                            <React.Fragment key={pair.id}>
+                              <tr data-upper-bracket={isTop ? 'true' : undefined} className={isTop ? 'bg-emerald-500/10' : ''}>
+                                <td className="py-3.5 px-4 font-mono font-black text-slate-400">
+                                  <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black ${
+                                    idx === 0 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                                    idx === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
+                                    idx === 2 ? 'bg-amber-600/20 text-amber-300 border border-amber-600/30' :
+                                    'bg-slate-800 text-slate-400'
+                                  }`}>
+                                    {idx + 1}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 font-extrabold text-white text-base">
+                                  {pair.name || getTeamName(pair.id)}
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-black text-emerald-400 text-base">
+                                  {pair.poolPlayWins}W
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-mono font-bold text-sm">
+                                  <span className={pair.poolPlayPointDiff > 0 ? 'text-emerald-400 font-black' : pair.poolPlayPointDiff < 0 ? 'text-rose-400 font-black' : 'text-slate-400'}>
+                                    {pair.poolPlayPointDiff > 0 ? '+' : ''}{pair.poolPlayPointDiff}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-mono text-slate-300">
+                                  {pair.poolPlayPointsScored}
+                                </td>
+                              </tr>
+                              {showCutline && (
+                                <tr className="bg-amber-500/10">
+                                  <td colSpan={5} className="py-1.5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-amber-300 border-y border-amber-500/30">
+                                    Upper Bracket Cutline (Top {ubCount} Advance)
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>
@@ -598,8 +607,8 @@ export default function TVDisplayPage() {
             {/* ─── REGISTRATION PHASE ─── */}
             {phase === 'REGISTRATION' && (
               <div className="bg-slate-900/60 rounded-3xl p-10 border border-slate-800 text-center space-y-6">
-                <div className="w-20 h-20 mx-auto bg-indigo-500/20 rounded-3xl flex items-center justify-center border border-indigo-500/30">
-                  <Users size={40} className="text-indigo-400" />
+                <div className="w-20 h-20 mx-auto bg-emerald-500/20 rounded-3xl flex items-center justify-center border border-emerald-500/30">
+                  <Users size={40} className="text-emerald-400" />
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-3xl font-black text-white">Tournament Registration Open</h2>
@@ -609,7 +618,7 @@ export default function TVDisplayPage() {
                 </div>
                 {tournamentState && tournamentState.pairs.length > 0 && (
                   <div className="pt-4 max-w-2xl mx-auto">
-                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-3">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-3 tabular-nums">
                       Registered Teams ({tournamentState.pairs.length})
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
@@ -630,7 +639,7 @@ export default function TVDisplayPage() {
           <aside className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
             {/* Active Match Info (IN_PROGRESS & READY) */}
             <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 flex-1 overflow-hidden flex flex-col">
-              <h2 className="text-xl font-black mb-4 tracking-tight text-indigo-400 uppercase flex items-center gap-2">
+              <h2 className="text-xl font-black mb-4 tracking-tight text-emerald-400 uppercase flex items-center gap-2 tabular-nums">
                 <PlayCircle size={20} /> Active Matches ({activeTourneyMatches.length})
               </h2>
               
@@ -649,7 +658,7 @@ export default function TVDisplayPage() {
                     return (
                       <div
                         key={m.id}
-                        className={`p-4 rounded-2xl border transition-all ${
+                        className={`p-4 rounded-2xl border transition-colors duration-150 ${
                           isLive
                             ? 'bg-emerald-950/30 border-emerald-500/40 shadow-md'
                             : 'bg-slate-900/60 border-slate-800'
@@ -714,14 +723,14 @@ export default function TVDisplayPage() {
 
           <aside className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
             <div className="glass-dark rounded-3xl p-6 border border-slate-800 flex-1 overflow-hidden flex flex-col">
-              <h2 className="text-2xl font-black mb-6 tracking-tight text-blue-400 uppercase">Up Next</h2>
+              <h2 className="text-2xl font-black mb-6 tracking-tight text-emerald-400 uppercase">Up Next</h2>
               <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {upNext.length === 0 ? (
                   <div className="text-slate-600 font-bold text-center mt-10 text-xl">Queue Empty</div>
                 ) : (
                   upNext.map((player, idx) => (
                     <div key={player.id} className="flex items-center gap-4 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
-                      <span className="text-2xl font-black text-slate-700 w-8 text-right font-mono">{idx + 1}</span>
+                      <span className="text-2xl font-black text-slate-700 w-8 text-right font-mono tabular-nums">{idx + 1}</span>
                       <div className="flex-1">
                         <PlayerCard player={player} compact />
                       </div>

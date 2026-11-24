@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Zap } from 'lucide-react';
 
 /** Clamps a raw score input to valid pickleball UI range [0, 99]. */
 export function clampScore(raw: string | number): number {
@@ -61,7 +62,7 @@ export function QuickScoreChips({
               key={s}
               type="button"
               onClick={() => onPick(a, b)}
-              className={`h-9 rounded-lg text-xs font-black transition-all active:scale-95 border ${
+              className={`h-9 rounded-lg text-xs font-black tabular-nums transition-colors duration-150 active:scale-95 border ${
                 isActive
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-400'
@@ -78,8 +79,8 @@ export function QuickScoreChips({
 
   return (
     <div className="space-y-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700">
-      <div className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-        ⚡ Quick Score: tap loser&apos;s points (0–{targetScore - 2})
+      <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+        <Zap size={12} /> Quick Score: tap loser&apos;s points (0–{targetScore - 2})
       </div>
       {renderRow('A', teamAName)}
       {renderRow('B', teamBName)}

@@ -1,8 +1,5 @@
 import { useStore } from '../src/lib/store';
-import { PlayerStatus, CourtStatus, Team, Player } from '../src/types/models';
-
-// Helper to wait
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+import { PlayerStatus, Team, Player } from '../src/types/models';
 
 describe('Real-Life Chaos Simulations', () => {
   beforeEach(() => {

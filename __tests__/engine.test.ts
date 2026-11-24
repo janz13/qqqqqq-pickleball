@@ -123,7 +123,6 @@ function simulateSession(
 
       // Track 4-person repeats
       const fourIds = batch.map((p) => p.id).sort();
-      const fourKey = fourIds.join(',');
       matchHistory.push(fourIds);
 
       // Track 3-person combos

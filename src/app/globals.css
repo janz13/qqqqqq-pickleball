@@ -1,6 +1,27 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark *));
 
+@utility glass {
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+@utility glass-dark {
+  background-color: rgba(15, 23, 42, 0.84);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(51, 65, 85, 0.65);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
 /* === Base animations === */
 @keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }

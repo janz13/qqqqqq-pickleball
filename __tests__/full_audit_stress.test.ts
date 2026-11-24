@@ -10,7 +10,7 @@
 import { useStore } from '../src/lib/store';
 import { buildNextBatches, priorityOrder, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '../src/engine/queue-engine';
 import { pairFour, scoreMatch } from '../src/engine/pairing-engine';
-import { Player, PlayerStatus, Court, CourtStatus, Match, Team, Session, createPlayer, ProposedMatch } from '../src/types/models';
+import { Player, PlayerStatus, CourtStatus, Team, createPlayer, ProposedMatch } from '../src/types/models';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ function addPlayers(count: number, skillRange: [number, number] = [1, 5], prefix
 
 function runMatchCycle(courtIndex = 0): { matchId: string } | null {
   const store = useStore.getState();
-  const { courts, matches } = store;
+  const { courts } = store;
   const openCourt = courts[courtIndex];
   if (!openCourt || openCourt.status !== CourtStatus.OPEN) return null;
 
@@ -104,7 +104,7 @@ describe('Full Audit Stress Test — Varied Parameters (60 Scenarios)', () => {
     });
 
     it('Test 2: Creates session with 8 courts', () => {
-      const session = initSession('Big Venue', 8);
+      initSession('Big Venue', 8);
       const state = useStore.getState();
       expect(state.courts).toHaveLength(8);
       for (let i = 0; i < 8; i++) {

@@ -3,6 +3,7 @@
 
 import { Player, PlayerStatus, Court } from '@/types/models';
 import { useStore } from '@/lib/store';
+import { getInitials } from '@/utils/initials';
 import { Link2, ExternalLink } from 'lucide-react';
 
 interface PlayerCardProps {
@@ -38,12 +39,12 @@ const statusBorderColors: Record<PlayerStatus, string> = {
 export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps) {
   const courts = useStore(state => state.courts);
   const currentCourt = player.currentCourtId ? courts.find((c: Court) => c.id === player.currentCourtId) : null;
-  const initials = player.name.substring(0, 2).toUpperCase();
+  const initials = getInitials(player.name);
 
   const photoContent = player.photoUrl ? (
-    <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover rounded-full shadow-sm" />
+    <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover rounded-full shadow-sm ring-1 ring-black/10 dark:ring-white/10" />
   ) : (
-    <div className={`w-full h-full rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${skillGradients[player.skillLevel] || skillGradients[3]}`}>
+    <div className={`w-full h-full rounded-full flex items-center justify-center text-xs font-bold shadow-sm ring-1 ring-black/10 dark:ring-white/10 ${skillGradients[player.skillLevel] || skillGradients[3]}`}>
       {initials}
     </div>
   );
@@ -51,17 +52,18 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
   if (compact) {
     return (
       <button 
+        type="button"
         onClick={onClick}
-        className={`w-full text-left min-h-[44px] px-3 py-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-l-4 ${statusBorderColors[player.status]} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`w-full text-left min-h-[44px] px-3 py-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-150 border-l-4 ${statusBorderColors[player.status]} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full shrink-0">
             {photoContent}
           </div>
-          <span className="font-medium text-gray-900 dark:text-gray-100">{player.name}</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{player.name}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">GP: {player.sessionGamesPlayed}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-[10px] font-bold tabular-nums text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">GP: {player.sessionGamesPlayed}</span>
           <div className={`w-2.5 h-2.5 rounded-full ${statusColors[player.status]}`} />
         </div>
       </button>
@@ -69,20 +71,28 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
   }
 
   return (
-    <button 
+    <div 
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      className={`w-full text-left min-h-[64px] p-4 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 focus:ring-2 ring-blue-500/30 transition-colors flex flex-col gap-3 border-l-4 ${statusBorderColors[player.status]} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      className={`w-full text-left min-h-[64px] p-4 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 ring-emerald-500/35 transition-colors duration-150 flex flex-col gap-3 border-l-4 ${statusBorderColors[player.status]} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
     >
       <div className="flex justify-between items-start w-full">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-full shrink-0">
             {photoContent}
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-none tracking-tight">{player.name}</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100 text-lg leading-none tracking-tight truncate">{player.name}</span>
               {player.duprProfileUrl && (
-                <a href={player.duprProfileUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-blue-500 hover:text-blue-600 transition-colors">
+                <a href={player.duprProfileUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} aria-label={`Open ${player.name} DUPR profile`} className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors shrink-0">
                   <ExternalLink size={14} />
                 </a>
               )}
@@ -92,7 +102,7 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
               <span className="text-xs font-medium text-gray-500 uppercase tracking-widest">{player.status}</span>
             </div>
             {player.lockedPartnerId && (
-              <div className="flex items-center gap-1 mt-1 text-blue-600 dark:text-blue-400 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 w-fit px-1.5 py-0.5 rounded">
+              <div className="flex items-center gap-1 mt-1 text-emerald-700 dark:text-emerald-400 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 w-fit px-1.5 py-0.5 rounded">
                 <Link2 size={12} />
                 Duo Locked
               </div>
@@ -100,7 +110,7 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
           </div>
         </div>
         
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex gap-1.5">
             {player.isLatecomer && !player.hasCaughtUp && (
               <span className="text-[10px] bg-gradient-to-r from-amber-500 to-orange-500 text-white px-2 py-0.5 rounded-full font-medium shadow-sm">
@@ -115,7 +125,7 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
       </div>
 
       <div className="flex justify-between items-end w-full pt-1 border-t border-gray-100 dark:border-gray-800">
-        <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+        <div className="text-xs font-medium tabular-nums text-gray-500 dark:text-gray-400">
           W: {player.sessionWins} | L: {player.sessionLosses} | {player.sessionGamesPlayed} GP
         </div>
         
@@ -125,7 +135,7 @@ export function PlayerCard({ player, onClick, compact = false }: PlayerCardProps
           </span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store';
 import { Court, CourtStatus, Team, Player, PlayerStatus } from '@/types/models';
 import { Clock, Trash2, AlertCircle, CheckCircle, Repeat, Pencil, Check, X } from 'lucide-react';
 import { PlayerCard } from './PlayerCard';
+import { ScoreDialog } from './ScoreDialog';
 import { useTTS } from '@/hooks/useTTS';
 
 export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?: boolean }) {
@@ -12,13 +13,15 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
   const tts = useTTS();
   const [now, setNow] = useState(() => Date.now());
   const [swappingPlayerId, setSwappingPlayerId] = useState<string | null>(null);
+  const [showScoreDialog, setShowScoreDialog] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [editedLabel, setEditedLabel] = useState(court.label);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  const startEditingLabel = () => {
     setEditedLabel(court.label);
-  }, [court.label]);
+    setIsEditingLabel(true);
+  };
 
   const handleSaveLabel = () => {
     const trimmed = editedLabel.trim();
@@ -78,11 +81,36 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
 
   const headerGradient = 
     court.status === CourtStatus.OPEN ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 
-    court.status === CourtStatus.IN_PROGRESS ? 'bg-blue-500 text-white' : 
+    court.status === CourtStatus.IN_PROGRESS ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white' : 
     'bg-rose-500 text-white';
 
+  const renderRemoveCourtButton = () => (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirmingRemove) {
+          removeCourt(court.id);
+          setConfirmingRemove(false);
+        } else {
+          setConfirmingRemove(true);
+        }
+      }}
+      onBlur={() => setConfirmingRemove(false)}
+      className={`px-3.5 min-h-[44px] rounded-xl text-xs font-bold transition-colors duration-150 flex items-center justify-center gap-1.5 whitespace-nowrap ${
+        confirmingRemove
+          ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm'
+          : 'bg-gray-100 text-gray-500 hover:text-rose-500 hover:bg-rose-50 dark:bg-gray-800 dark:text-gray-400'
+      }`}
+      aria-label={confirmingRemove ? 'Confirm remove court' : 'Remove Court'}
+      title={confirmingRemove ? 'Click again to remove court' : 'Remove Court'}
+    >
+      <Trash2 size={16} />
+      {confirmingRemove && <span>Confirm?</span>}
+    </button>
+  );
+
   return (
-    <div className="flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-all duration-200">
+    <div className="flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-colors duration-200">
       <div className={`flex items-center justify-between p-4 ${headerGradient}`}>
         <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
           {isEditingLabel && !readOnly ? (
@@ -119,15 +147,15 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
             <div className="flex items-center gap-1.5 min-w-0 group">
               <h3 
                 className={`font-bold tracking-tight text-lg truncate ${!readOnly ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-                onClick={() => !readOnly && setIsEditingLabel(true)}
+                onClick={() => !readOnly && startEditingLabel()}
                 title={!readOnly ? "Click to rename court" : undefined}
               >
                 {court.label}
               </h3>
               {!readOnly && (
                 <button
-                  onClick={() => setIsEditingLabel(true)}
-                  className="p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-all text-current shrink-0"
+                  onClick={startEditingLabel}
+                  className="p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity duration-150 text-current shrink-0"
                   title="Edit Court Name"
                 >
                   <Pencil size={14} />
@@ -147,7 +175,7 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 18-5v12L3 14v-3z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg>
               </button>
             )}
-            <div className="flex items-center gap-1.5 font-mono text-lg font-semibold bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm text-white">
+            <div className="flex items-center gap-1.5 font-mono tabular-nums text-lg font-semibold bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm text-white">
               <Clock size={16} />
               <span>{elapsed}</span>
             </div>
@@ -202,18 +230,27 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
       {!readOnly && (
         <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 flex flex-wrap gap-3">
           {court.status === CourtStatus.IN_PROGRESS && match && (
-            <div className="flex w-full gap-3">
-              <button 
-                onClick={() => handleCompleteMatch(Team.A)}
-                className="flex-1 min-h-[44px] bg-gradient-to-r from-blue-500 to-blue-600 hover:scale-[1.02] text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-md shadow-blue-500/20"
+            <div className="flex flex-col w-full gap-2">
+              <div className="flex w-full gap-3">
+                <button 
+                  onClick={() => handleCompleteMatch(Team.A)}
+                  className="flex-1 min-h-[44px] bg-gradient-to-r from-blue-500 to-blue-600 hover:scale-[1.02] active:scale-[0.98] text-white rounded-xl text-sm font-semibold transition-transform duration-150 shadow-md shadow-blue-500/20"
+                >
+                  Team 1 Wins
+                </button>
+                <button 
+                  onClick={() => handleCompleteMatch(Team.B)}
+                  className="flex-1 min-h-[44px] bg-gradient-to-r from-rose-500 to-rose-600 hover:scale-[1.02] active:scale-[0.98] text-white rounded-xl text-sm font-semibold transition-transform duration-150 shadow-md shadow-rose-500/20"
+                >
+                  Team 2 Wins
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScoreDialog(true)}
+                className="w-full min-h-[38px] rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-colors duration-150"
               >
-                Team 1 Wins
-              </button>
-              <button 
-                onClick={() => handleCompleteMatch(Team.B)}
-                className="flex-1 min-h-[44px] bg-gradient-to-r from-rose-500 to-rose-600 hover:scale-[1.02] text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-md shadow-rose-500/20"
-              >
-                Team 2 Wins
+                Enter Score
               </button>
             </div>
           )}
@@ -222,45 +259,23 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
             <div className="flex w-full gap-3">
               <button
                 onClick={() => updateCourt({ ...court, status: CourtStatus.NEEDS_RESET })}
-                className="flex-1 flex items-center justify-center gap-2 min-h-[44px] bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 rounded-xl text-sm font-medium transition-all duration-200"
+                className="flex-1 flex items-center justify-center gap-2 min-h-[44px] bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 rounded-xl text-sm font-medium transition-colors duration-150"
               >
                 <AlertCircle size={16} /> Mark Needs Reset
               </button>
-              {!match && (
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to remove this court?')) {
-                      removeCourt(court.id);
-                    }
-                  }}
-                  className="px-4 min-h-[44px] bg-gray-100 text-gray-500 hover:text-rose-500 hover:bg-rose-50 dark:bg-gray-800 dark:text-gray-400 rounded-xl transition-all duration-200 flex items-center justify-center"
-                  aria-label="Remove Court"
-                >
-                <Trash2 size={18} />
-              </button>
-            )}
-          </div>
-        )}
+              {!match && renderRemoveCourtButton()}
+            </div>
+          )}
 
         {court.status === CourtStatus.NEEDS_RESET && (
           <div className="flex w-full gap-3">
               <button
                 onClick={() => updateCourt({ ...court, status: CourtStatus.OPEN })}
-                className="flex-1 flex items-center justify-center gap-2 min-h-[44px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-semibold transition-all duration-200 shadow-md"
+                className="flex-1 flex items-center justify-center gap-2 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors duration-150 shadow-md"
               >
                 <CheckCircle size={16} /> Mark Open
               </button>
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to remove this court?')) {
-                    removeCourt(court.id);
-                  }
-                }}
-                className="px-4 min-h-[44px] bg-gray-100 text-gray-500 hover:text-rose-500 hover:bg-rose-50 dark:bg-gray-800 dark:text-gray-400 rounded-xl transition-all duration-200 flex items-center justify-center"
-                aria-label="Remove Court"
-              >
-                <Trash2 size={18} />
-              </button>
+              {renderRemoveCourtButton()}
           </div>
         )}
       </div>
@@ -296,6 +311,21 @@ export function CourtCard({ court, readOnly = false }: { court: Court, readOnly?
             </button>
           </div>
         </div>
+      )}
+
+      {showScoreDialog && match && !readOnly && (
+        <ScoreDialog
+          match={match}
+          players={players}
+          onSubmit={(winner, scoreA, scoreB) => {
+            const winningTeam = winner === Team.A ? teamA : teamB;
+            const winningNames = winningTeam.map(p => p.name).join(' and ');
+            tts.speak(`Congratulations to ${winningNames} for winning on ${court.label}.`);
+            completeMatch(match.id, winner, scoreA, scoreB);
+            setShowScoreDialog(false);
+          }}
+          onClose={() => setShowScoreDialog(false)}
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { useTTS } from '@/hooks/useTTS';
-import { Volume2, Mic, Play, Settings2, Eye } from 'lucide-react';
+import { Volume2, Mic, Play, Settings2, Eye, Lightbulb } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { RosterRatioBanner } from '@/components/ui/RosterRatioBanner';
 
@@ -24,7 +24,7 @@ export default function TTSSettingsPanel() {
       {/* Matchmaking Mode Card */}
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl mb-2">
         <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-700 pb-6">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md">
             <Settings2 size={24} />
           </div>
           <div>
@@ -36,10 +36,10 @@ export default function TTSSettingsPanel() {
         <div className="flex flex-col gap-4">
           <button 
             onClick={() => handleModeChange('balanced')}
-            className={`text-left p-4 border-2 rounded-2xl transition-all ${
+            className={`text-left p-4 border-2 rounded-2xl transition-colors duration-150 ${
               (!session?.matchingMode || session?.matchingMode === 'balanced') 
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10' 
-                : 'border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10' 
+                : 'border-slate-200 dark:border-slate-700 hover:border-emerald-300'
             }`}
           >
             <div className="font-bold text-lg text-slate-800 dark:text-slate-100">Balanced (Mixer)</div>
@@ -48,10 +48,10 @@ export default function TTSSettingsPanel() {
           
           <button 
             onClick={() => handleModeChange('competitive')}
-            className={`text-left p-4 border-2 rounded-2xl transition-all ${
+            className={`text-left p-4 border-2 rounded-2xl transition-colors duration-150 ${
               session?.matchingMode === 'competitive' 
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10' 
-                : 'border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10' 
+                : 'border-slate-200 dark:border-slate-700 hover:border-emerald-300'
             }`}
           >
             <div className="font-bold text-lg text-slate-800 dark:text-slate-100">Competitive (Skill & Ladder)</div>
@@ -64,7 +64,7 @@ export default function TTSSettingsPanel() {
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-6 shadow-xl mb-2">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-md shrink-0">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md shrink-0">
               <Eye size={24} />
             </div>
             <div>
@@ -85,18 +85,19 @@ export default function TTSSettingsPanel() {
                 }
               }} 
             />
-            <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-cyan-500 shadow-inner"></div>
+            <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-transform peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-500 shadow-inner"></div>
           </label>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 p-3.5 rounded-xl leading-relaxed">
-          💡 Turn this off if you make frequent manual swaps or adjustments, so players don&apos;t expect a specific pairing until their court is actively assigned.
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 p-3.5 rounded-xl leading-relaxed flex items-start gap-2">
+          <Lightbulb size={15} className="text-amber-500 shrink-0 mt-0.5" />
+          <span>Turn this off if you make frequent manual swaps or adjustments, so players don&apos;t expect a specific pairing until their court is actively assigned.</span>
         </p>
       </div>
 
       <div className="glass dark:glass-dark p-8 rounded-3xl flex flex-col gap-8 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white shadow-md">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 flex items-center justify-center text-white shadow-md">
               <Volume2 size={24} />
             </div>
             <div>
@@ -106,7 +107,7 @@ export default function TTSSettingsPanel() {
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" className="sr-only peer" checked={tts.isEnabled} onChange={(e) => tts.setEnabled(e.target.checked)} />
-            <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-indigo-500 shadow-inner"></div>
+            <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-transform peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600 shadow-inner"></div>
           </label>
         </div>
 
@@ -117,7 +118,7 @@ export default function TTSSettingsPanel() {
             </label>
             <div className="relative">
               <select 
-                className="w-full appearance-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-4 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
+                className="w-full appearance-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-4 font-medium focus:ring-2 focus:ring-emerald-500 outline-none transition-colors duration-150 disabled:opacity-50"
                 value={tts.selectedVoice?.name || ''}
                 onChange={(e) => {
                   const voice = tts.availableVoices.find(v => v.name === e.target.value);
@@ -138,7 +139,7 @@ export default function TTSSettingsPanel() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <label className="font-bold text-slate-700 dark:text-slate-300">Speech Rate</label>
-              <span className="font-mono bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full text-sm font-bold">
+              <span className="font-mono tabular-nums bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-3 py-1 rounded-full text-sm font-bold">
                 {tts.rate.toFixed(1)}x
               </span>
             </div>
@@ -147,7 +148,7 @@ export default function TTSSettingsPanel() {
               min="0.5" max="2" step="0.1" 
               value={tts.rate}
               onChange={(e) => tts.setRate(parseFloat(e.target.value))}
-              className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-600"
               disabled={!tts.isEnabled}
             />
           </div>
@@ -155,7 +156,7 @@ export default function TTSSettingsPanel() {
           <button 
             onClick={() => tts.announceCourtAssignment('Court 1', ['Alice', 'Bob'], ['Charlie', 'Dave'])}
             disabled={!tts.isEnabled}
-            className="mt-4 w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:grayscale transition-all duration-200 shadow-lg shadow-emerald-500/20 active:scale-95"
+            className="mt-4 w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:grayscale transition-[transform,opacity] duration-150 shadow-lg shadow-emerald-500/20 active:scale-95"
           >
             <Play size={20} fill="currentColor" />
             Test Announcement

@@ -8,7 +8,7 @@ describe('Stress Test Simulation', () => {
     // Helper to generate a random number
     const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-    let players: Player[] = [];
+    const players: Player[] = [];
     const createP = (id: string, skill: number) => {
       players.push(createPlayer({
         id,
@@ -47,11 +47,11 @@ describe('Stress Test Simulation', () => {
       currentMatchId: null
     }));
 
-    let matches: Match[] = [];
+    const matches: Match[] = [];
     let round = 1;
     const NUM_ROUNDS = 24; // 24 rounds * 16 players = 384 slots / 36 players = 10.6 games each
 
-    let metrics = {
+    const metrics = {
       ruleViolations: 0,
       lockedPairsViolated: 0,
       skillGapViolations: 0,

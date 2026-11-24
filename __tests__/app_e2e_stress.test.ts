@@ -1,7 +1,7 @@
 import { useStore } from '../src/lib/store';
-import { buildNextBatches, priorityOrder, incrementSitOuts, catchUpTargetForNewPlayer, refreshCatchUpStatus } from '../src/engine/queue-engine';
+import { buildNextBatches, priorityOrder, refreshCatchUpStatus } from '../src/engine/queue-engine';
 import { pairFour, scoreMatch } from '../src/engine/pairing-engine';
-import { Player, PlayerStatus, Court, CourtStatus, Match, Team, Session, createPlayer } from '../src/types/models';
+import { Player, PlayerStatus, CourtStatus, Team, createPlayer } from '../src/types/models';
 
 describe('Intense Full-App End-to-End Stress Test Suite (70 Scenarios)', () => {
   const createTestPlayer = (

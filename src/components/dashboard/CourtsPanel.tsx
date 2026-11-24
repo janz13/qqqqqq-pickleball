@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
-import { CourtStatus, PlayerStatus, ProposedMatch, Player } from '@/types/models';
+import { CourtStatus, PlayerStatus, ProposedMatch } from '@/types/models';
 import { CourtCard } from '@/components/ui/CourtCard';
 import { PlayerCard } from '@/components/ui/PlayerCard';
-import { Plus, Play, Repeat, Users, X, PlusCircle } from 'lucide-react';
+import { Play, Repeat, Users, X, PlusCircle } from 'lucide-react';
 import { useTTS } from '@/hooks/useTTS';
 import { priorityOrder } from '@/engine/queue-engine';
 
@@ -118,15 +118,15 @@ export default function CourtsPanel() {
       <div className="flex flex-wrap gap-4">
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm px-5 py-3 rounded-full flex items-center gap-3">
           <span className="text-gray-500 font-medium">Total Courts</span>
-          <span className="font-bold text-lg">{courts.length}</span>
+          <span className="font-bold text-lg tabular-nums">{courts.length}</span>
         </div>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm px-5 py-3 rounded-full flex items-center gap-3 border-l-4 border-l-amber-500">
           <span className="text-gray-500 font-medium">Active</span>
-          <span className="font-bold text-lg text-amber-600">{activeCourtsCount}</span>
+          <span className="font-bold text-lg text-amber-600 tabular-nums">{activeCourtsCount}</span>
         </div>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm px-5 py-3 rounded-full flex items-center gap-3 border-l-4 border-l-emerald-500">
           <span className="text-gray-500 font-medium">Open</span>
-          <span className="font-bold text-lg text-emerald-600">{openCourtsCount}</span>
+          <span className="font-bold text-lg text-emerald-600 tabular-nums">{openCourtsCount}</span>
         </div>
       </div>
 
@@ -190,7 +190,7 @@ export default function CourtsPanel() {
                     <button
                       onClick={() => handleSendToCourt(batch, targetCourt)}
                       disabled={isCourtSending}
-                      className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold shadow-sm transition-all duration-200 ${
+                      className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold shadow-sm transition-[transform,background-color,opacity] duration-150 ${
                         isCourtSending ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'
                       }`}
                     >
@@ -217,7 +217,7 @@ export default function CourtsPanel() {
             
             <button
               onClick={handleOpenAddCourt}
-              className="flex flex-col items-center justify-center min-h-[220px] rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/20 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 text-gray-500 dark:text-gray-400 group"
+              className="flex flex-col items-center justify-center min-h-[220px] rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/20 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:border-gray-400 dark:hover:border-gray-500 transition-colors duration-150 text-gray-500 dark:text-gray-400 group"
             >
               <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center group-hover:scale-110 transition-transform duration-200 mb-3">
                 <PlusCircle size={24} className="text-gray-600 dark:text-gray-300" />
@@ -228,7 +228,7 @@ export default function CourtsPanel() {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Waiting Pool ({queuedPlayers.length})</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100 tabular-nums">Waiting Pool ({queuedPlayers.length})</h2>
           <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-2xl p-4 min-h-[400px]">
             {queuedPlayers.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500 py-12">
@@ -306,7 +306,7 @@ export default function CourtsPanel() {
                   autoFocus
                   required
                   maxLength={30}
-                  className="w-full px-4 py-3 text-base font-bold rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
+                  className="w-full px-4 py-3 text-base font-bold rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900 dark:text-gray-100"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
                   Name it whatever you like (e.g. Court A, Stadium, Center Court).
@@ -322,7 +322,7 @@ export default function CourtsPanel() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm"
                 >
                   Add Court
                 </button>

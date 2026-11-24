@@ -7,7 +7,7 @@ import * as fs from 'fs';
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 // Generate 44 initial players
-let players: Player[] = [];
+const players: Player[] = [];
 for (let i = 1; i <= 44; i++) {
   players.push(createPlayer({
     id: `p${i}`,
@@ -39,12 +39,12 @@ const courts: Court[] = Array.from({ length: 5 }, (_, i) => ({
   currentMatchId: null
 }));
 
-let matches: Match[] = [];
+const matches: Match[] = [];
 let round = 1;
 
 const NUM_ROUNDS = 20;
 
-let metrics = {
+const metrics = {
   ruleViolations: 0,
   lockedPairsViolated: 0,
   skillGapViolations: 0,
@@ -73,7 +73,6 @@ while (round <= NUM_ROUNDS) {
   }
 
   // Update hasCaughtUp status
-  const avgGames = players.reduce((sum, p) => sum + p.sessionGamesPlayed, 0) / players.length;
   players.forEach(p => {
     if (p.isLatecomer && p.sessionGamesPlayed >= p.catchUpTargetGames) {
       p.hasCaughtUp = true;

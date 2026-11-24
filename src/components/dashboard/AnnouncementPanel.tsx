@@ -21,7 +21,7 @@ export default function AnnouncementPanel() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-slide-up">
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gradient-to-br from-indigo-400 to-purple-500 text-white rounded-xl shadow-sm">
+        <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl shadow-sm">
           <Megaphone size={24} />
         </div>
         <div>
@@ -36,13 +36,13 @@ export default function AnnouncementPanel() {
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="e.g. 'Tournament starting in 5 minutes!'"
-          className="w-full min-h-[120px] p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none transition-all text-black dark:text-white"
+          className="w-full min-h-[120px] p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none transition-colors duration-150 text-black dark:text-white"
         />
         <div className="flex justify-end mt-2">
           <button
             onClick={handleAnnounce}
             disabled={text.trim().length === 0}
-            className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 transition-all shadow-md shadow-indigo-500/20 flex items-center gap-2"
+            className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-xl disabled:opacity-50 transition-colors duration-150 shadow-md shadow-emerald-600/20 flex items-center gap-2"
           >
             <Play size={18} fill="currentColor" /> Announce
           </button>

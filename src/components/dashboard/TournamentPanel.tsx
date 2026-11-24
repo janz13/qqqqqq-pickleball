@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { BracketTree } from '@/components/ui/BracketTree';
 import { QuickScoreChips, clampScore, getScoreAdvisory } from '@/components/ui/QuickScoreChips';
-import { SessionType, TournamentPair, Player, TournamentMatch } from '@/types/models';
-import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, CheckCircle, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import { SessionType, TournamentPair, TournamentMatch } from '@/types/models';
+import { Users, Shuffle, Plus, Trash2, ArrowRight, RefreshCw, Edit3, AlertCircle, Trophy, Shield, ChevronDown, ChevronUp, Layers, Scale, GitMerge, CheckCircle2, ClipboardList, Zap } from 'lucide-react';
 import { updatePoolMatchScore, advanceMatchWinner, buildPoolPlayRound, generateBracket, advanceChaosRound, checkPoolTiebreakers, buildTiebreakerMatches, hasDownstreamBracketMatchStarted } from '@/engine/tournament-engine';
 
 export default function TournamentPanel() {
@@ -30,20 +30,21 @@ export default function TournamentPanel() {
   const [selectedPoolRounds, setSelectedPoolRounds] = useState(3);
 
   // Pair Builder State
-  const [draftPairs, setDraftPairs] = useState<TournamentPair[]>([]);
+  const [editedDraftPairs, setEditedDraftPairs] = useState<TournamentPair[] | null>(null);
   const [selectedP1, setSelectedP1] = useState<string>('');
   const [selectedP2, setSelectedP2] = useState<string>('');
 
-  const checkedInPlayers = players.filter(p => p.status !== 'CHECKED_OUT');
+  const checkedInPlayers = useMemo(
+    () => players.filter(p => p.status !== 'CHECKED_OUT'),
+    [players]
+  );
 
-  // Initialize draft pairs from locked partners or existing pairs
-  useEffect(() => {
+  // Derive default pairs from existing state or locked partners without cascading effect renders
+  const defaultDraftPairs = useMemo<TournamentPair[]>(() => {
     if (state?.pairs && state.pairs.length > 0) {
-      setDraftPairs(state.pairs);
-      return;
+      return state.pairs;
     }
 
-    // Auto-form pairs using locked partners if any
     const paired = new Set<string>();
     const initialPairs: TournamentPair[] = [];
 
@@ -53,7 +54,7 @@ export default function TournamentPanel() {
         const partner = checkedInPlayers.find(x => x.id === p.lockedPartnerId);
         if (partner) {
           initialPairs.push({
-            id: 'pair_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            id: `pair_${p.id}_${partner.id}`,
             player1Id: p.id,
             player2Id: partner.id,
             name: `${p.name} & ${partner.name}`,
@@ -68,8 +69,11 @@ export default function TournamentPanel() {
       }
     });
 
-    setDraftPairs(initialPairs);
-  }, [checkedInPlayers.length, state?.pairs]);
+    return initialPairs;
+  }, [checkedInPlayers, state]);
+
+  const draftPairs = editedDraftPairs ?? defaultDraftPairs;
+  const setDraftPairs = setEditedDraftPairs;
 
   // Unassigned players in Pair Builder
   const assignedPlayerIds = new Set<string>();
@@ -167,6 +171,7 @@ export default function TournamentPanel() {
           maxPoolRounds: selectedPoolRounds
         }
       });
+      setDraftPairs(null);
       setIsEditingPairs(false);
       return;
     }
@@ -182,12 +187,12 @@ export default function TournamentPanel() {
         }
       });
     }
+    setDraftPairs(null);
     setIsEditingPairs(false);
   };
 
   // ─── No tournament state or in custom pair builder mode ───
   if (!state || state.phase === 'REGISTRATION' || isEditingPairs) {
-    const canStart = session?.sessionType && session.sessionType !== 'OPEN_PLAY';
     const isDoubles = session?.sessionType === SessionType.TOURNAMENT_DOUBLES;
 
     return (
@@ -205,9 +210,7 @@ export default function TournamentPanel() {
           {isEditingPairs && (
             <button
               onClick={() => {
-                if (state?.pairs) {
-                  setDraftPairs(state.pairs);
-                }
+                setDraftPairs(null);
                 setIsEditingPairs(false);
               }}
               className="px-4 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 font-bold"
@@ -222,14 +225,14 @@ export default function TournamentPanel() {
           <button
             onClick={handleRandomizeAllPairs}
             disabled={checkedInPlayers.length < 2}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-all"
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-colors duration-150"
           >
             <Shuffle size={16} /> Randomize All Pairs
           </button>
           {unassignedPlayers.length > 1 && (
             <button
               onClick={handlePairRemaining}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-all"
+              className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm flex items-center gap-2 shadow-sm transition-colors duration-150"
             >
               <Users size={16} /> Auto-Pair Remaining ({unassignedPlayers.length})
             </button>
@@ -237,7 +240,7 @@ export default function TournamentPanel() {
           {draftPairs.length > 0 && (
             <button
               onClick={() => setDraftPairs([])}
-              className="px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-sm flex items-center gap-2 transition-all ml-auto"
+              className="px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-sm flex items-center gap-2 transition-colors duration-150 ml-auto"
             >
               <Trash2 size={16} /> Clear All
             </button>
@@ -247,6 +250,7 @@ export default function TournamentPanel() {
         {/* Chaos Roulette player-count guidance */}
         {session?.sessionType === SessionType.TOURNAMENT_CHAOS && (() => {
           const n = checkedInPlayers.length;
+          const teamsFormed = Math.floor(n / 2);
           const isIdeal = n >= 4 && (n & (n - 1)) === 0;
           return (
             <div className={`p-4 rounded-2xl border text-sm flex items-start gap-2 ${
@@ -257,10 +261,14 @@ export default function TournamentPanel() {
               <AlertCircle size={18} className="shrink-0 mt-0.5" />
               <div>
                 <span className="font-black">
-                  {isIdeal ? `${n} players: halves cleanly every round.` : `${n} players: not 8, 16 or 32.`}
+                  {isIdeal
+                    ? `${n} players (${teamsFormed} teams): halves cleanly every round.`
+                    : n % 2 !== 0
+                      ? `${n} players (odd player count): 1 player stays unpaired; ${teamsFormed} teams can start.`
+                      : `${n} players (${teamsFormed} teams): not a power of two (4, 8, 16, or 32).`}
                 </span>{' '}
                 <span className="font-medium">
-                  Chaos Roulette works best with 8, 16 or 32 players. If a round has an odd number of teams, one team gets a bye and advances automatically.
+                  Chaos Roulette works best with 8, 16 or 32 players. Whenever a round has an odd number of surviving teams, one team automatically receives a bye.
                 </span>
               </div>
             </div>
@@ -270,13 +278,13 @@ export default function TournamentPanel() {
         {/* Manual Pair Form */}
         <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
           <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-2">
-            <Plus size={16} className="text-indigo-500" /> Manually Form a Pair
+            <Plus size={16} className="text-emerald-500" /> Manually Form a Pair
           </h3>
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <select
               value={selectedP1}
               onChange={e => setSelectedP1(e.target.value)}
-              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Select Player 1...</option>
               {unassignedPlayers.map(p => (
@@ -287,7 +295,7 @@ export default function TournamentPanel() {
             <select
               value={selectedP2}
               onChange={e => setSelectedP2(e.target.value)}
-              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Select Player 2...</option>
               {unassignedPlayers.filter(p => p.id !== selectedP1).map(p => (
@@ -297,7 +305,7 @@ export default function TournamentPanel() {
             <button
               onClick={handleAddManualPair}
               disabled={!selectedP1 || !selectedP2}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 text-white font-bold text-sm shadow-md transition-colors duration-150 flex items-center justify-center gap-2"
             >
               <Plus size={16} /> Pair Up
             </button>
@@ -335,7 +343,7 @@ export default function TournamentPanel() {
             <div className="p-12 text-center bg-white dark:bg-gray-900 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 text-gray-400">
               <Users size={36} className="mx-auto mb-2 opacity-30" />
               <p className="font-bold">No teams formed yet.</p>
-              <p className="text-xs mt-1">Click "Randomize All Pairs" or manually pair players above.</p>
+              <p className="text-xs mt-1">Click &ldquo;Randomize All Pairs&rdquo; or manually pair players above.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -345,7 +353,7 @@ export default function TournamentPanel() {
                 return (
                   <div key={pair.id} className="p-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
                     <div>
-                      <div className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                      <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest tabular-nums">
                         Team #{idx + 1}
                       </div>
                       <div className="font-extrabold text-sm text-gray-900 dark:text-gray-100 mt-0.5">
@@ -370,7 +378,7 @@ export default function TournamentPanel() {
         {isDoubles && (
           <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
             <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-2 mb-3">
-              🏊 Pool Play Rounds
+              <Layers size={15} className="text-emerald-600 dark:text-emerald-400" /> Pool Play Rounds
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
               How many rounds of pool play before transitioning to the elimination bracket?
@@ -381,9 +389,9 @@ export default function TournamentPanel() {
                   key={n}
                   type="button"
                   onClick={() => setSelectedPoolRounds(n)}
-                  className={`min-w-[52px] min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-black transition-all ${
+                  className={`min-w-[52px] min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-black tabular-nums transition-colors duration-150 ${
                     selectedPoolRounds === n
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
                   }`}
                 >
@@ -400,7 +408,7 @@ export default function TournamentPanel() {
           <button
             onClick={handleStartWithCustomPairs}
             disabled={draftPairs.length < 2}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-black text-lg shadow-xl shadow-emerald-600/20 transition-all flex items-center justify-center gap-3"
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-gray-400 disabled:to-gray-400 text-white font-black text-lg shadow-xl shadow-emerald-600/20 transition-colors duration-150 flex items-center justify-center gap-3"
           >
             <span>{isDoubles ? `Start ${selectedPoolRounds}-Round Pool Play with these Teams` : 'Generate Tournament with these Teams'}</span>
             <ArrowRight size={20} />
@@ -634,14 +642,11 @@ export default function TournamentPanel() {
   const maxPoolRounds = state?.maxPoolRounds ?? 0;
   const reachedMaxRounds = maxPoolRounds > 0 && currentPoolRound >= maxPoolRounds;
   const canAddMoreRounds = allPoolDone && !reachedMaxRounds;
-  const allTiebreakersDone = tiebreakerMatches.length > 0 && tiebreakerMatches.every(m => m.status === 'COMPLETED');
   const inTiebreakerPhase = state?.tiebreakerPhase === true;
 
   // ─── Chaos status ───
   const chaosMatches = matches.filter(m => !m.id.startsWith('pool_match_') && !m.id.startsWith('pool_tiebreaker_'));
   const maxRound = chaosMatches.length > 0 ? Math.max(...chaosMatches.map(m => m.round)) : 0;
-  const currentRoundMatches = chaosMatches.filter(m => m.round === maxRound);
-  const canAdvanceChaos = currentRoundMatches.length > 0 && currentRoundMatches.every(m => m.status === 'COMPLETED');
   const chaosRounds = Array.from(new Set(chaosMatches.map(m => m.round))).sort((a, b) => b - a);
   const round1Matches = chaosMatches.filter(m => m.round === 1);
   const totalChaosTeams = round1Matches.reduce((count, m) => count + (m.teamAId ? 1 : 0) + (m.teamBId ? 1 : 0), 0);
@@ -653,22 +658,19 @@ export default function TournamentPanel() {
     .sort((a, b) => b.round - a.round || b.matchNumber - a.matchNumber)[0];
   const chaosChampionId = lastCompletedChaosMatch?.winnerTeamId;
   const chaosChampionName = chaosChampionId ? getTeamName(chaosChampionId) : null;
-  const chaosChampionPair = pairs.find(p => p.id === chaosChampionId);
-  const chaosChampionP1 = chaosChampionPair ? players.find(p => p.id === chaosChampionPair.player1Id) : null;
-  const chaosChampionP2 = chaosChampionPair ? players.find(p => p.id === chaosChampionPair.player2Id) : null;
 
   // ─── Tournament mode label ───
-  const modeLabel = session?.sessionType === SessionType.TOURNAMENT_DOUBLES ? '🏆 The Grand Slam' 
-    : session?.sessionType === SessionType.TOURNAMENT_SINGLE_ELIM ? '⚡ Knockout Sprint' 
-    : '🌪️ Chaos Roulette';
+  const modeLabel = session?.sessionType === SessionType.TOURNAMENT_DOUBLES ? 'The Grand Slam' 
+    : session?.sessionType === SessionType.TOURNAMENT_SINGLE_ELIM ? 'Knockout Sprint' 
+    : 'Chaos Roulette';
 
   // ─── Helper: Render Chaos round-by-round card layout ───
   const renderChaosRoundView = (isReadOnly: boolean = false) => (
     <div className="flex flex-col gap-6">
       {/* Surviving / Eliminated Teams Info Bar */}
       <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="px-3.5 py-1.5 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-black text-xs uppercase tracking-wider border border-indigo-200 dark:border-indigo-800/60">
+        <div className="flex items-center gap-3 flex-wrap tabular-nums">
+          <span className="px-3.5 py-1.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-black text-xs uppercase tracking-wider border border-emerald-200 dark:border-emerald-800/60">
             {remainingChaosTeamsCount} {remainingChaosTeamsCount === 1 ? 'team' : 'teams'} remaining
           </span>
           <span className="px-3.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-black text-xs uppercase tracking-wider border border-rose-200 dark:border-rose-900/60">
@@ -692,11 +694,11 @@ export default function TournamentPanel() {
             {/* Round Header */}
             <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-2.5">
-                <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  🌪️ Round {roundNum}
+                <h3 className="text-xl font-black text-gray-900 dark:text-gray-100 flex items-center gap-2 tabular-nums">
+                  <Shuffle size={18} className="text-emerald-500" /> Round {roundNum}
                 </h3>
                 {isCurrentRound && !isReadOnly && (
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                     Active Round
                   </span>
                 )}
@@ -717,20 +719,21 @@ export default function TournamentPanel() {
 
             {/* Advance Notice Banner for Current Completed Round */}
             {!isReadOnly && isCurrentRound && allRoundDone && (
-              <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between flex-wrap gap-3">
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-200">
+                  <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-200">
                     Round {roundNum} Matches Finished!
                   </h4>
-                  <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
                     All matches have been scored. Generate the next Chaos round to re-pair surviving players!
                   </p>
                 </div>
                 <button
                   onClick={handleAdvanceChaosRound}
-                  className="min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-2 animate-pulse-soft"
+                  className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-colors duration-150 flex items-center gap-2 animate-pulse-soft"
                 >
-                  <span>🌪️ Generate Next Chaos Round</span>
+                  <Shuffle size={16} />
+                  <span>Generate Next Chaos Round</span>
                   <ArrowRight size={16} />
                 </button>
               </div>
@@ -747,10 +750,10 @@ export default function TournamentPanel() {
                 return (
                   <div
                     key={match.id}
-                    className={`p-5 rounded-2xl shadow-sm border transition-all ${
+                    className={`p-5 rounded-2xl shadow-sm border transition-colors duration-150 ${
                       isDone 
                         ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800' 
-                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-indigo-400 dark:hover:border-indigo-600'
+                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-emerald-400 dark:hover:border-emerald-600'
                     }`}
                   >
                     <div className="flex justify-between items-center mb-3">
@@ -773,23 +776,23 @@ export default function TournamentPanel() {
                         : 'text-gray-900 dark:text-gray-100 font-bold'
                     }`}>
                       <span className="truncate mr-2 flex items-center gap-2">
-                        {isWinnerA && <span className="text-emerald-500 font-black">🏆</span>}
+                        {isWinnerA && <Trophy size={15} className="text-emerald-500 shrink-0" />}
                         {getTeamName(match.teamAId)}
                       </span>
                       <span className="font-mono font-black text-xl">{match.scoreA ?? (hasBye ? 'W' : '-')}</span>
                     </div>
 
                     {/* Team B Row */}
-                    <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-all ${
+                    <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-colors duration-150 ${
                       isWinnerB 
                         ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
                         : 'text-gray-900 dark:text-gray-100 font-bold'
                     }`}>
                       <span className="truncate mr-2 flex items-center gap-2">
-                        {isWinnerB && <span className="text-emerald-500 font-black">🏆</span>}
+                        {isWinnerB && <Trophy size={15} className="text-emerald-500 shrink-0" />}
                         {hasBye ? <span className="text-gray-400 italic">BYE (Auto-advance)</span> : getTeamName(match.teamBId)}
                       </span>
-                      <span className="font-mono font-black text-xl">{hasBye ? '-' : (match.scoreB ?? '-')}</span>
+                      <span className="font-mono tabular-nums font-black text-xl">{hasBye ? '-' : (match.scoreB ?? '-')}</span>
                     </div>
 
                     {/* Score Input Box or Action */}
@@ -804,7 +807,7 @@ export default function TournamentPanel() {
                               <button
                                 type="button"
                                 onClick={handleSwapPoolScores}
-                                className="min-h-[44px] px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                                className="min-h-[44px] px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
                               >
                                 <RefreshCw size={14} /> Swap Scores / Winner
                               </button>
@@ -912,7 +915,7 @@ export default function TournamentPanel() {
                                 type="button"
                                 onClick={() => handleSaveChaosScore(match.id)}
                                 disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99}
-                                className="flex-1 min-h-[44px] py-2.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
+                                className="flex-1 min-h-[44px] py-2.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-colors duration-150"
                               >
                                 {isDone ? 'Update Score' : 'Save Score'}
                               </button>
@@ -922,7 +925,7 @@ export default function TournamentPanel() {
                           <button
                             type="button"
                             onClick={() => handleOpenChaosScoring(match)}
-                            className="w-full min-h-[44px] py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                            className="w-full min-h-[44px] py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
                           >
                             <Edit3 size={14} /> Edit Score / Winner
                           </button>
@@ -930,7 +933,7 @@ export default function TournamentPanel() {
                           <button
                             type="button"
                             onClick={() => handleOpenChaosScoring(match)}
-                            className="w-full min-h-[44px] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                            className="w-full min-h-[44px] py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-colors duration-150 flex items-center justify-center gap-2"
                           >
                             Enter Score
                           </button>
@@ -952,8 +955,17 @@ export default function TournamentPanel() {
       {/* ─── Header ─── */}
       <div className="flex items-center justify-between flex-wrap gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
         <div>
-          <h2 className="text-3xl font-black tracking-tight">{modeLabel}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+          <h2 className="text-3xl font-black tracking-tight flex items-center gap-2.5">
+            {session?.sessionType === SessionType.TOURNAMENT_DOUBLES ? (
+              <Trophy size={26} className="text-emerald-500 shrink-0" />
+            ) : session?.sessionType === SessionType.TOURNAMENT_SINGLE_ELIM ? (
+              <Zap size={26} className="text-amber-500 shrink-0" />
+            ) : (
+              <Shuffle size={26} className="text-teal-500 shrink-0" />
+            )}
+            <span>{modeLabel}</span>
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 font-medium tabular-nums">
             {pairs.length} teams • {matches.length} total matches
           </p>
         </div>
@@ -969,10 +981,10 @@ export default function TournamentPanel() {
           <div className={`px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
             phase === 'COMPLETED' ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' :
             phase === 'BRACKET' ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800' :
-            phase === 'POOL_PLAY' ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800' :
+            phase === 'POOL_PLAY' ? 'bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800' :
             'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
-          }`}>
-            {phase === 'COMPLETED' ? '✅ Completed' : phase === 'BRACKET' ? '🏟️ Bracket' : phase === 'POOL_PLAY' ? '🏊 Pool Play' : '📋 Registration'}
+          } inline-flex items-center gap-1.5`}>
+            {phase === 'COMPLETED' ? <><CheckCircle2 size={12} /> Completed</> : phase === 'BRACKET' ? <><GitMerge size={12} /> Bracket</> : phase === 'POOL_PLAY' ? <><Layers size={12} /> Pool Play</> : <><ClipboardList size={12} /> Registration</>}
           </div>
           <button
             onClick={() => setShowResetConfirm(true)}
@@ -1005,7 +1017,7 @@ export default function TournamentPanel() {
 
       {/* ─── Downstream Reversal Blocked Toast ─── */}
       {bracketEditError && (
-        <div role="alert" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg p-4 rounded-2xl bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 shadow-2xl flex items-start justify-between gap-3">
+        <div role="alert" className="fixed top-16 lg:top-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg p-4 rounded-2xl bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 shadow-2xl flex items-start justify-between gap-3">
           <div className="flex items-start gap-2 text-sm font-semibold text-rose-800 dark:text-rose-200">
             <AlertCircle size={18} className="shrink-0 mt-0.5" />
             <span>{bracketEditError}</span>
@@ -1095,14 +1107,15 @@ export default function TournamentPanel() {
             <div className="flex items-center gap-3 flex-wrap">
               {/* Next Pool Round button — hidden when max rounds reached or tiebreaker phase */}
               {canAddMoreRounds && !inTiebreakerPhase && (
-                <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+                <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors duration-150">
                   Next Pool Round →
                 </button>
               )}
               {/* Generate Bracket button — show when reached max rounds OR manually when all done */}
               {allPoolDone && (reachedMaxRounds || !maxPoolRounds) && !inTiebreakerPhase && (
-                <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all animate-pulse-soft flex items-center gap-2">
-                  <span>🏟️ Generate Double Elimination Bracket</span>
+                <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-colors duration-150 animate-pulse-soft flex items-center gap-2">
+                  <GitMerge size={16} />
+                  <span>Generate Double Elimination Bracket</span>
                   <ArrowRight size={16} />
                 </button>
               )}
@@ -1113,7 +1126,7 @@ export default function TournamentPanel() {
           {allPoolDone && reachedMaxRounds && !inTiebreakerPhase && (
             <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
               <h4 className="text-sm font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
-                ✅ All {maxPoolRounds} Pool Play Rounds Complete!
+                <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" /> All {maxPoolRounds} Pool Play Rounds Complete!
               </h4>
               <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium mt-1">
                 Pool play is done. Generate the bracket to begin the elimination phase. Top half will enter the Upper Bracket with double-elimination advantage, bottom half enters Lower Bracket directly.
@@ -1126,7 +1139,7 @@ export default function TournamentPanel() {
             <div className="flex flex-col gap-4">
               <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 animate-slide-up">
                 <h4 className="text-sm font-black text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                  ⚖️ Tiebreaker Matches Required!
+                  <Scale size={15} className="text-amber-600 dark:text-amber-400" /> Tiebreaker Matches Required!
                 </h4>
                 <p className="text-xs text-amber-700 dark:text-amber-300 font-medium mt-1">
                   Teams are tied at the Upper/Lower bracket cutline. These tiebreaker matches must be completed to determine bracket placement.
@@ -1145,7 +1158,7 @@ export default function TournamentPanel() {
                     }`}>
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                          ⚖️ Tiebreaker
+                          <Scale size={13} /> Tiebreaker
                         </span>
                         <span className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider ${
                           isDone 
@@ -1225,7 +1238,7 @@ export default function TournamentPanel() {
                             )}
                             <div className="flex gap-2">
                               <button onClick={() => setScoringMatchId(null)} className="flex-1 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button>
-                              <button onClick={() => handleSaveTiebreakerScore(match.id)} disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99} className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all">
+                              <button onClick={() => handleSaveTiebreakerScore(match.id)} disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99} className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-colors duration-150">
                                 {isDone ? 'Update Score' : 'Save Score'}
                               </button>
                             </div>
@@ -1233,9 +1246,9 @@ export default function TournamentPanel() {
                         ) : (
                           <button
                             onClick={() => handleOpenPoolScoring(match)}
-                            className={`w-full py-3 rounded-xl text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 ${
+                            className={`w-full py-3 rounded-xl text-sm font-bold shadow-md transition-colors duration-150 flex items-center justify-center gap-2 ${
                               isDone 
-                                ? 'border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider' 
+                                ? 'border border-gray-200 dark:border-gray-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-black uppercase tracking-wider' 
                                 : 'bg-amber-600 hover:bg-amber-700 text-white'
                             }`}
                           >
@@ -1259,7 +1272,7 @@ export default function TournamentPanel() {
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
               <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
                 <h4 className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                  <Shield size={14} className="text-indigo-500" /> Pool Standings
+                  <Shield size={14} className="text-emerald-500" /> Pool Standings
                 </h4>
                 <span className="text-xs text-gray-400 font-medium">Top {cutline} → Upper Bracket • Bottom {sortedStandings.length - cutline} → Lower Bracket</span>
               </div>
@@ -1319,10 +1332,10 @@ export default function TournamentPanel() {
               return (
                 <div
                   key={match.id}
-                  className={`p-5 rounded-2xl shadow-sm border transition-all ${
+                  className={`p-5 rounded-2xl shadow-sm border transition-colors duration-150 ${
                     isDone 
                       ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800' 
-                      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-indigo-400 dark:hover:border-indigo-600'
+                      : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:border-emerald-400 dark:hover:border-emerald-600'
                   }`}
                 >
                   <div className="flex justify-between items-center mb-3">
@@ -1339,29 +1352,29 @@ export default function TournamentPanel() {
                   </div>
 
                   {/* Team A Row */}
-                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl transition-all ${
+                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl transition-colors duration-150 ${
                     isWinnerA 
                       ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
                       : 'text-gray-900 dark:text-gray-100 font-bold'
                   }`}>
                     <span className="truncate mr-2 flex items-center gap-2">
-                      {isWinnerA && <span className="text-emerald-500 font-black">🏆</span>}
+                      {isWinnerA && <Trophy size={15} className="text-emerald-500 shrink-0" />}
                       {getTeamName(match.teamAId)}
                     </span>
-                    <span className="font-mono font-black text-xl">{match.scoreA ?? '-'}</span>
+                    <span className="font-mono tabular-nums font-black text-xl">{match.scoreA ?? '-'}</span>
                   </div>
 
                   {/* Team B Row */}
-                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-all ${
+                  <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl mt-1 transition-colors duration-150 ${
                     isWinnerB 
                       ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/40 font-black' 
                       : 'text-gray-900 dark:text-gray-100 font-bold'
                   }`}>
                     <span className="truncate mr-2 flex items-center gap-2">
-                      {isWinnerB && <span className="text-emerald-500 font-black">🏆</span>}
+                      {isWinnerB && <Trophy size={15} className="text-emerald-500 shrink-0" />}
                       {getTeamName(match.teamBId)}
                     </span>
-                    <span className="font-mono font-black text-xl">{match.scoreB ?? '-'}</span>
+                    <span className="font-mono tabular-nums font-black text-xl">{match.scoreB ?? '-'}</span>
                   </div>
 
                   {/* Score Input Box or Edit Action */}
@@ -1375,7 +1388,7 @@ export default function TournamentPanel() {
                           <button
                             type="button"
                             onClick={handleSwapPoolScores}
-                            className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center gap-1 hover:bg-indigo-100 transition-colors"
+                            className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-bold flex items-center gap-1 hover:bg-emerald-100 transition-colors"
                           >
                             <RefreshCw size={12} /> Swap Scores / Winner
                           </button>
@@ -1454,7 +1467,7 @@ export default function TournamentPanel() {
                           <button
                             onClick={() => handleSavePoolScore(match.id)}
                             disabled={scoreA === scoreB || scoreA < 0 || scoreB < 0 || scoreA > 99 || scoreB > 99}
-                            className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-all"
+                            className="flex-1 py-2 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-black shadow-md transition-colors duration-150"
                           >
                             {isDone ? 'Update Score' : 'Save Score'}
                           </button>
@@ -1463,14 +1476,14 @@ export default function TournamentPanel() {
                     ) : isDone ? (
                       <button
                         onClick={() => handleOpenPoolScoring(match)}
-                        className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                        className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
                       >
                         <Edit3 size={14} /> Edit Score / Winner
                       </button>
                     ) : (
                       <button
                         onClick={() => handleOpenPoolScoring(match)}
-                        className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-colors duration-150 flex items-center justify-center gap-2"
                       >
                         Enter Score
                       </button>
@@ -1484,18 +1497,19 @@ export default function TournamentPanel() {
           {/* ─── Sticky Bottom CTA Bar (visible when all current-round matches are scored) ─── */}
           {allPoolDone && !inTiebreakerPhase && (
             <div className="sticky bottom-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-4 rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center justify-between flex-wrap gap-3">
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                ✅ All {poolMatches.length} matches scored
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1.5 tabular-nums">
+                <CheckCircle2 size={16} className="text-emerald-500" /> All {poolMatches.length} matches scored
               </span>
               <div className="flex items-center gap-3">
                 {canAddMoreRounds && (
-                  <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+                  <button onClick={handleStartPoolPlay} className="min-h-[44px] px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors duration-150">
                     Next Pool Round →
                   </button>
                 )}
                 {(reachedMaxRounds || !maxPoolRounds) && (
-                  <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2">
-                    <span>🏟️ Generate Bracket</span>
+                  <button onClick={handleGenerateBracket} className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-600/20 transition-colors duration-150 flex items-center gap-2">
+                    <GitMerge size={16} />
+                    <span>Generate Bracket</span>
                     <ArrowRight size={16} />
                   </button>
                 )}
@@ -1541,7 +1555,7 @@ export default function TournamentPanel() {
                     className="w-full px-5 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   >
                     <div className="flex items-center gap-2">
-                      <Shield size={16} className="text-indigo-500" />
+                      <Shield size={16} className="text-emerald-500" />
                       <span className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest">
                         Pool Play Standings ({completedPoolMatches.length} Matches Completed)
                       </span>
@@ -1596,8 +1610,8 @@ export default function TournamentPanel() {
                   <Trophy size={40} />
                 </div>
                 <div>
-                  <span className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
-                    🏆 Chaos Roulette Champion
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5">
+                    <Trophy size={14} /> Chaos Roulette Champion
                   </span>
                   <h3 className="text-2xl sm:text-4xl font-black text-gray-900 dark:text-gray-100 mt-1">
                     {chaosChampionName || 'Tournament Winner'}

@@ -23,6 +23,7 @@ export default function RosterPanel() {
   const [isSyncingRoster, setIsSyncingRoster] = useState(false);
   
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
@@ -240,7 +241,7 @@ export default function RosterPanel() {
                   value={newPlayerName}
                   onChange={(e) => { setNewPlayerName(e.target.value); setNameError(''); }}
                   placeholder="e.g. John Doe"
-                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
                 {nameError && <p className="text-sm text-red-500 mt-1">{nameError}</p>}
               </div>
@@ -253,9 +254,9 @@ export default function RosterPanel() {
                       key={level}
                       type="button"
                       onClick={() => setNewPlayerSkill(level)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors duration-150 ${
                         newPlayerSkill === level
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-emerald-600 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400'
                       }`}
                     >
@@ -266,14 +267,14 @@ export default function RosterPanel() {
               </div>
               
               <div className="flex items-center gap-2">
-                  <input type="checkbox" id="checkInNow" checked={checkInNow} onChange={(e) => setCheckInNow(e.target.checked)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500" />
+                  <input type="checkbox" id="checkInNow" checked={checkInNow} onChange={(e) => setCheckInNow(e.target.checked)} className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" />
                   <label htmlFor="checkInNow" className="text-sm font-medium text-gray-700 dark:text-gray-300">Check in now</label>
               </div>
 
               <button
                 type="submit"
                 disabled={!newPlayerName.trim()}
-                className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+                className="w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 flex items-center justify-center gap-2"
               >
                 <Plus size={18} /> Add
               </button>
@@ -340,7 +341,7 @@ export default function RosterPanel() {
                     <button
                       type="button"
                       onClick={handleLoadAllFromRoster}
-                      className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+                      className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl transition-colors duration-150 shadow-sm flex items-center justify-center gap-1.5"
                     >
                       <Check size={14} />
                       <span>Add All Available Roster Players ({roster.filter(p => !players.some(cp => cp.name.toLowerCase() === p.name.toLowerCase())).length})</span>
@@ -352,15 +353,15 @@ export default function RosterPanel() {
                           <div key={saved.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2.5 rounded-xl border border-gray-100 dark:border-gray-700/60">
                               <div className="min-w-0 flex-1 pr-2">
                                 <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{saved.name}</div>
-                                <div className="text-[11px] text-gray-500 flex items-center gap-2">
-                                  <span className="font-bold text-blue-600 dark:text-blue-400">L{saved.skillLevel}</span>
+                                <div className="text-[11px] text-gray-500 tabular-nums flex items-center gap-2">
+                                  <span className="font-bold text-emerald-600 dark:text-emerald-400">L{saved.skillLevel}</span>
                                   <span>•</span>
                                   <span>{saved.allTimeWins}W - {saved.allTimeLosses}L ({saved.allTimeGamesPlayed} GP)</span>
                                 </div>
                               </div>
                               <button 
                                 onClick={() => handleLoadFromRoster(saved)} 
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm shrink-0"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors duration-150 shadow-sm shrink-0"
                               >
                                 Add
                               </button>
@@ -394,9 +395,9 @@ export default function RosterPanel() {
                 <button
                   key={f}
                   onClick={() => setFilter(f as 'ALL' | 'AVAILABLE' | 'PLAYING' | 'RESTING' | 'CHECKED_OUT')}
-                  className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                  className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 ${
                     filter === f 
-                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' 
+                      ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-300 shadow-sm' 
                       : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                   }`}
                 >
@@ -409,24 +410,36 @@ export default function RosterPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredPlayers.length > 0 ? (
               filteredPlayers.map(player => (
-                <div key={player.id} className="relative group">
-                  <PlayerCard player={player} onClick={() => setEditingPlayer(player)} />
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                <div key={player.id} className="flex flex-col gap-1.5">
+                  <PlayerCard player={player} onClick={() => { setConfirmingRemoveId(null); setEditingPlayer(player); }} />
+                  <div className="flex items-center justify-between px-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmingRemoveId(null); setEditingPlayer(player); }}
+                      className="text-[11px] font-semibold text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 transition-colors"
+                    >
+                      Edit details
+                    </button>
                     {player.status === PlayerStatus.CHECKED_OUT ? (
-                        <button onClick={(e) => { e.stopPropagation(); updatePlayerStatus(player.id, PlayerStatus.AVAILABLE); }} className="text-xs bg-emerald-500 text-white rounded-md py-1 px-2 font-bold shadow-sm">Check In</button>
+                      <button
+                        type="button"
+                        onClick={() => updatePlayerStatus(player.id, PlayerStatus.AVAILABLE)}
+                        className="min-h-[34px] text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-1 px-3 font-bold shadow-sm transition-colors"
+                      >
+                        Check In
+                      </button>
                     ) : (
-                        <select
-                          value={player.status}
-                          aria-label={`Status for ${player.name}`}
-                          onChange={(e) => updatePlayerStatus(player.id, e.target.value as PlayerStatus)}
-                          onClick={e => e.stopPropagation()}
-                          className="min-h-[36px] text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md py-1 px-2 cursor-pointer shadow-sm outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value={PlayerStatus.AVAILABLE}>Available</option>
-                          {player.status === PlayerStatus.PLAYING && <option value={PlayerStatus.PLAYING} disabled>Playing</option>}
-                          <option value={PlayerStatus.RESTING}>Resting</option>
-                          <option value={PlayerStatus.CHECKED_OUT}>Out</option>
-                        </select>
+                      <select
+                        value={player.status}
+                        aria-label={`Status for ${player.name}`}
+                        onChange={(e) => updatePlayerStatus(player.id, e.target.value as PlayerStatus)}
+                        className="min-h-[34px] text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg py-1 px-2.5 cursor-pointer shadow-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value={PlayerStatus.AVAILABLE}>Available</option>
+                        {player.status === PlayerStatus.PLAYING && <option value={PlayerStatus.PLAYING} disabled>Playing</option>}
+                        <option value={PlayerStatus.RESTING}>Resting</option>
+                        <option value={PlayerStatus.CHECKED_OUT}>Out</option>
+                      </select>
                     )}
                   </div>
                 </div>
@@ -491,11 +504,11 @@ export default function RosterPanel() {
                       </div>
 
                       <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">Locked Partner <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">Duo Queue</span></label>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">Locked Partner <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded uppercase font-bold">Duo Queue</span></label>
                           <select 
                             value={editingPlayer.lockedPartnerId || ''} 
                             onChange={e => setEditingPlayer({...editingPlayer, lockedPartnerId: e.target.value === '' ? null : e.target.value})} 
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-emerald-500 outline-none"
                           >
                               <option value="">None (Solo)</option>
                               {players.filter(p => p.id !== editingPlayer.id).map(p => (
@@ -516,27 +529,42 @@ export default function RosterPanel() {
                       </div>
                       
                   </div>
-                  <div className="mt-6 flex items-center justify-between gap-3">
+                  <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
                       <button
                         type="button"
                         disabled={players.find(p => p.id === editingPlayer.id)?.status === PlayerStatus.PLAYING}
                         onClick={() => {
-                          removePlayer(editingPlayer.id);
-                          setEditingPlayer(null);
+                          if (confirmingRemoveId === editingPlayer.id) {
+                            removePlayer(editingPlayer.id);
+                            setConfirmingRemoveId(null);
+                            setEditingPlayer(null);
+                          } else {
+                            setConfirmingRemoveId(editingPlayer.id);
+                          }
                         }}
-                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 dark:text-rose-400 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          confirmingRemoveId === editingPlayer.id
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm'
+                            : 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 dark:text-rose-400'
+                        }`}
                       >
-                        Remove Player
+                        {confirmingRemoveId === editingPlayer.id ? 'Confirm Remove?' : 'Remove Player'}
                       </button>
-                      <div className="flex gap-3">
-                        <button onClick={() => setEditingPlayer(null)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium">Cancel</button>
+                      <div className="flex gap-2 ml-auto">
+                        <button
+                          onClick={() => { setConfirmingRemoveId(null); setEditingPlayer(null); }}
+                          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium whitespace-nowrap"
+                        >
+                          Cancel
+                        </button>
                         <button 
                           disabled={!editingPlayer.name.trim() || players.some(p => p.id !== editingPlayer.id && p.name.trim().toLowerCase() === editingPlayer.name.trim().toLowerCase())}
                           onClick={() => { 
                             updatePlayer(editingPlayer); 
+                            setConfirmingRemoveId(null);
                             setEditingPlayer(null); 
                           }} 
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           Save Changes
                         </button>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useStore } from '@/lib/store';
 import { Team, Player, Match } from '@/types/models';
+import { getInitials } from '@/utils/initials';
 import { 
   History, 
   Trophy, 
@@ -18,15 +19,27 @@ import {
   Timer,
   ExternalLink,
   Calendar,
-  ChevronRight,
   Loader2
 } from 'lucide-react';
+
+interface CloudSessionRow {
+  id: string;
+  owner_uid?: string;
+  join_code: string;
+  updated_at: string;
+  is_active: boolean;
+  state_json?: {
+    session?: { name?: string };
+    matches?: unknown[];
+    players?: unknown[];
+  } | null;
+}
 
 export default function MatchHistoryPanel() {
   const { matches, players, courts, roster, reverseMatchWinner, sessionHistory, currentUser, session } = useStore();
   const [matchToReverse, setMatchToReverse] = useState<Match | null>(null);
   const [subTab, setSubTab] = useState<'current' | 'past'>('current');
-  const [cloudSessions, setCloudSessions] = useState<any[]>([]);
+  const [cloudSessions, setCloudSessions] = useState<CloudSessionRow[]>([]);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
 
   const activeUid = currentUser?.id || (session?.ownerUid && !session.ownerUid.startsWith('guest_') ? session.ownerUid : null);
@@ -37,18 +50,11 @@ export default function MatchHistoryPanel() {
     if (activeUid && !activeUid.startsWith('guest_')) {
       const loadPastSessions = async () => {
         try {
-          const { createClient } = await import('@/lib/supabase');
+          const { fetchOwnerSessionsAction } = await import('@/app/actions');
           if (isMounted) setIsLoadingCloud(true);
-          const supabase = createClient();
-          if (supabase) {
-            const res = await supabase
-              .from('sessions')
-              .select('*')
-              .eq('owner_uid', activeUid)
-              .order('updated_at', { ascending: false });
-            if (res.data && isMounted) {
-              setCloudSessions(res.data);
-            }
+          const res = await fetchOwnerSessionsAction(activeUid, 50, 0);
+          if (res.sessions && isMounted) {
+            setCloudSessions(res.sessions as CloudSessionRow[]);
           }
         } catch (e) {
           console.error('Failed to load past sessions', e);
@@ -165,11 +171,11 @@ export default function MatchHistoryPanel() {
   return (
     <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto animate-slide-up">
       {session?.sessionType && session.sessionType !== 'OPEN_PLAY' && (
-        <div className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-xl p-4 flex items-start gap-3">
-          <Trophy className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={20} />
+        <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-start gap-3">
+          <Trophy className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" size={20} />
           <div>
-            <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Tournament Session</h3>
-            <p className="text-sm text-indigo-700 dark:text-indigo-400 mt-1">
+            <h3 className="font-bold text-emerald-900 dark:text-emerald-300">Tournament Session</h3>
+            <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-1">
               Tournament matches are managed in the <strong>Courts & Queue</strong> tab. You cannot reverse tournament bracket matches from this screen.
             </p>
           </div>
@@ -180,7 +186,7 @@ export default function MatchHistoryPanel() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
               <History size={22} />
             </div>
             <div>
@@ -198,9 +204,9 @@ export default function MatchHistoryPanel() {
           <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl inline-flex shadow-inner self-start sm:self-auto">
             <button
               onClick={() => setSubTab('current')}
-              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-all duration-200 ${
+              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-colors duration-150 tabular-nums ${
                 subTab === 'current'
-                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
               }`}
             >
@@ -208,9 +214,9 @@ export default function MatchHistoryPanel() {
             </button>
             <button
               onClick={() => setSubTab('past')}
-              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-all duration-200 ${
+              className={`px-4 py-2 rounded-lg font-semibold text-xs transition-colors duration-150 tabular-nums ${
                 subTab === 'past'
-                  ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
               }`}
             >
@@ -224,7 +230,7 @@ export default function MatchHistoryPanel() {
         <div className="space-y-4 pt-2">
           {isLoadingCloud ? (
             <div className="text-center py-16 px-4 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm">
-              <Loader2 size={32} className="animate-spin text-blue-500 mx-auto mb-3" />
+              <Loader2 size={32} className="animate-spin text-emerald-500 mx-auto mb-3" />
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Loading previous sessions from cloud...</p>
             </div>
           ) : allPastSessions.length === 0 ? (
@@ -244,7 +250,7 @@ export default function MatchHistoryPanel() {
               {allPastSessions.map(sessionItem => (
                 <div 
                   key={sessionItem.id}
-                  className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+                  className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-150 flex flex-col sm:flex-row justify-between sm:items-center gap-4"
                 >
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2.5 flex-wrap">
@@ -259,7 +265,7 @@ export default function MatchHistoryPanel() {
                         </span>
                       )}
                       {sessionItem.isLocal && (
-                        <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                           Local
                         </span>
                       )}
@@ -284,7 +290,7 @@ export default function MatchHistoryPanel() {
                       href={`/history/${sessionItem.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors duration-150 shadow-sm flex items-center gap-1.5"
                     >
                       <span>View Analysis</span>
                       <ExternalLink size={13} />
@@ -311,42 +317,42 @@ export default function MatchHistoryPanel() {
         {/* Summary Metric Badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <Swords size={24} />
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Total Matches
               </span>
-              <div className="text-2xl font-black text-gray-900 dark:text-gray-100">
+              <div className="text-2xl font-black text-gray-900 dark:text-gray-100 tabular-nums">
                 {totalMatchesPlayed}
               </div>
             </div>
           </div>
 
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 flex items-center justify-center">
               <Users size={24} />
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Unique Players
               </span>
-              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              <div className="text-2xl font-black text-teal-600 dark:text-teal-400 tabular-nums">
                 {totalUniquePlayers}
               </div>
             </div>
           </div>
 
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm p-4 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
               <Timer size={24} />
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Avg Duration
               </span>
-              <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
+              <div className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
                 {totalMatchesPlayed > 0 ? `${avgDurationMinutes} min` : '0 min'}
               </div>
             </div>
@@ -381,12 +387,12 @@ export default function MatchHistoryPanel() {
             return (
               <div
                 key={match.id}
-                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-150 overflow-hidden"
               >
                 {/* Match Header Bar */}
                 <div className="px-5 py-3 bg-gray-50/80 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                    <span className="font-mono tabular-nums text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
                       Match #{matchNumber}
                     </span>
                     <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -413,7 +419,7 @@ export default function MatchHistoryPanel() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
                     {/* Team A Card */}
                     <div
-                      className={`p-4 rounded-xl transition-all border ${
+                      className={`p-4 rounded-xl transition-colors duration-150 border ${
                         isWinnerA
                           ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/60 shadow-sm'
                           : 'bg-gray-50/60 dark:bg-gray-800/30 border-gray-200/70 dark:border-gray-800'
@@ -434,11 +440,11 @@ export default function MatchHistoryPanel() {
                       <div className="flex flex-col gap-2">
                         {teamAPlayers.map((p, idx) => (
                           <div key={p?.id || idx} className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden shadow-sm">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden shadow-sm ring-1 ring-black/10 dark:ring-white/10">
                               {p?.photoUrl ? (
                                 <img src={p.photoUrl} alt={p?.name || 'Player'} className="w-full h-full object-cover" />
                               ) : (
-                                (p?.name || '??').substring(0, 2).toUpperCase()
+                                getInitials(p?.name || '??')
                               )}
                             </div>
                             <span className={`text-sm font-semibold truncate ${
@@ -453,7 +459,7 @@ export default function MatchHistoryPanel() {
 
                     {/* Team B Card */}
                     <div
-                      className={`p-4 rounded-xl transition-all border ${
+                      className={`p-4 rounded-xl transition-colors duration-150 border ${
                         isWinnerB
                           ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/60 shadow-sm'
                           : 'bg-gray-50/60 dark:bg-gray-800/30 border-gray-200/70 dark:border-gray-800'
@@ -478,7 +484,7 @@ export default function MatchHistoryPanel() {
                               {p?.photoUrl ? (
                                 <img src={p.photoUrl} alt={p?.name || 'Player'} className="w-full h-full object-cover" />
                               ) : (
-                                (p?.name || '??').substring(0, 2).toUpperCase()
+                                getInitials(p?.name || '??')
                               )}
                             </div>
                             <span className={`text-sm font-semibold truncate ${
@@ -504,7 +510,7 @@ export default function MatchHistoryPanel() {
                     {(!session?.sessionType || session.sessionType === 'OPEN_PLAY') && (
                     <button
                       onClick={() => setMatchToReverse(match)}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 hover:bg-amber-50 dark:bg-gray-800 dark:hover:bg-amber-950/30 text-gray-700 hover:text-amber-700 dark:text-gray-300 dark:hover:text-amber-400 border border-gray-200 hover:border-amber-300 dark:border-gray-700 dark:hover:border-amber-800/50 transition-all duration-150 shadow-sm active:scale-95"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 hover:bg-amber-50 dark:bg-gray-800 dark:hover:bg-amber-950/30 text-gray-700 hover:text-amber-700 dark:text-gray-300 dark:hover:text-amber-400 border border-gray-200 hover:border-amber-300 dark:border-gray-700 dark:hover:border-amber-800/50 transition-[transform,colors] duration-150 shadow-sm active:scale-95"
                       title="Reverse the winner of this match"
                     >
                       <ArrowLeftRight size={14} className="text-amber-500" />
@@ -614,7 +620,7 @@ export default function MatchHistoryPanel() {
               <button
                 type="button"
                 onClick={handleConfirmReverse}
-                className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold rounded-xl text-sm shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold rounded-xl text-sm shadow-md shadow-amber-500/20 transition-colors duration-150 flex items-center justify-center gap-2"
               >
                 <CheckCircle2 size={16} />
                 Confirm Reverse
