@@ -1487,7 +1487,7 @@ export default function PlayerMonitorPage() {
         <div
           role="status"
           aria-live="polite"
-          className={`fixed ${activeNotification ? 'top-24' : 'bottom-5'} left-1/2 -translate-x-1/2 z-50 animate-slide-up w-[92%] max-w-md`}
+          className={`fixed ${activeNotification ? 'top-48' : 'bottom-5'} left-1/2 -translate-x-1/2 z-50 animate-slide-up w-[92%] max-w-md`}
         >
           <div className="bg-indigo-600/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl flex items-start gap-3 border border-indigo-400/50 relative">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
