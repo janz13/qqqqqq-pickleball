@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { Trophy, Medal, Award, RefreshCw, X, Check, Flame, Crown, ArrowDown, Layout, Swords } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import { Trophy, Medal, Award, RefreshCw, X, Check, Flame, Crown, ArrowDown, Layout, Swords, Shuffle } from 'lucide-react';
 import { QuickScoreChips, getScoreAdvisory } from './QuickScoreChips';
 
 export interface TournamentMatch {
@@ -33,6 +33,8 @@ export interface BracketTreeProps {
   matches: TournamentMatch[];
   pairs?: TournamentPair[];
   onMatchClick?: (matchId: string, winnerTeamId: string, scoreA?: number, scoreB?: number) => void;
+  hidePodium?: boolean;
+  isChaosMode?: boolean;
 }
 
 interface RoundConnectorProps {
@@ -110,8 +112,10 @@ function RoundConnector({ currentCount, nextCount }: RoundConnectorProps) {
   );
 }
 
-export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
+export function BracketTree({ matches, onMatchClick, hidePodium = false, isChaosMode }: BracketTreeProps) {
   const hasDoubleElim = matches.some(m => m.isLosersBracket || m.isGrandFinals);
+  const resolvedChaosMode = isChaosMode ?? matches.some(m => m.id.startsWith('chaos_'));
+  const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   
   // Default to 'all' for Liquipedia Main Event view!
   const [viewMode, setViewMode] = useState<'all' | 'winners' | 'losers' | 'finals'>('all');
@@ -174,6 +178,12 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
   // Helper for Round Titles (Liquipedia style)
   const getUpperRoundTitle = (roundNum: number, matchCount: number) => {
+    if (resolvedChaosMode) {
+      if (roundNum === upperRoundNums[upperRoundNums.length - 1] && matchCount === 1 && upperRoundNums.length > 1) {
+        return 'Chaos Finals';
+      }
+      return `Chaos Round ${roundNum}`;
+    }
     if (matchCount === 1) return hasDoubleElim ? 'Upper Bracket Final' : 'Final';
     if (matchCount === 2) return hasDoubleElim ? 'Upper Bracket Semifinals' : 'Semifinals';
     if (matchCount === 4) return hasDoubleElim ? 'Upper Bracket Quarterfinals' : 'Quarterfinals';
@@ -181,6 +191,35 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
     if (matchCount === 16) return hasDoubleElim ? 'Upper Bracket Round of 32' : 'Round of 32';
     return hasDoubleElim ? `Upper Bracket Round ${roundNum}` : `Round ${roundNum}`;
   };
+
+  const fitCanvas = useCallback((ref: ReactZoomPanPinchRef | null) => {
+    if (!ref || typeof window === 'undefined') return;
+    const wrapperEl = ref.instance?.wrapperComponent;
+    const contentEl = ref.instance?.contentComponent;
+    if (wrapperEl && contentEl && contentEl.scrollWidth > 0 && contentEl.scrollHeight > 0) {
+      const fitScale = Math.min(
+        wrapperEl.clientWidth / contentEl.scrollWidth,
+        wrapperEl.clientHeight / contentEl.scrollHeight
+      ) * 0.9;
+      ref.centerView(Math.max(0.15, Math.min(1, fitScale)), 0);
+    } else {
+      ref.centerView(0.45, 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!transformRef.current || typeof window === 'undefined') return;
+    let innerId = 0;
+    const outerId = requestAnimationFrame(() => {
+      innerId = requestAnimationFrame(() => {
+        fitCanvas(transformRef.current);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerId);
+      if (innerId) cancelAnimationFrame(innerId);
+    };
+  }, [viewMode, matches.length, upperRoundNums.length, fitCanvas]);
 
   const getLowerRoundTitle = (roundNum: number, matchCount: number, totalRounds: number) => {
     if (roundNum === totalRounds) return 'Lower Bracket Final';
@@ -426,11 +465,14 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
       )}
 
       {/* ─── Podium Display ─── */}
-      {champion && (
+      {!hidePodium && champion && (
         <div className="flex justify-center items-end min-h-[260px] pt-8 gap-2 md:gap-4 mb-2 mt-2 animate-slide-up">
           {secondPlace && (
             <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[180px]">
-              <div className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700">
+              <div
+                className="text-[11px] sm:text-sm leading-tight line-clamp-2 break-words font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-2 sm:px-3 py-1.5 rounded-2xl shadow-md mb-6 text-center w-full border border-gray-200 dark:border-gray-700"
+                title={secondPlace}
+              >
                 {secondPlace}
               </div>
               <div className="w-full h-32 bg-gradient-to-t from-slate-300 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-t-2xl flex justify-center pt-4 border-t-4 border-slate-400 shadow-lg relative">
@@ -441,10 +483,13 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           )}
 
           <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[200px] z-10 relative">
-            <div className="text-sm md:text-base font-extrabold text-amber-900 dark:text-amber-200 bg-gradient-to-r from-yellow-200 to-yellow-100 dark:from-yellow-900/60 dark:to-amber-900/60 px-4 py-2 rounded-full shadow-md mb-2 text-center border border-yellow-300 dark:border-yellow-700 truncate w-full">
+            <div
+              className="text-xs sm:text-sm md:text-base leading-tight line-clamp-2 break-words font-extrabold text-amber-900 dark:text-amber-200 bg-gradient-to-r from-yellow-200 to-yellow-100 dark:from-yellow-900/60 dark:to-amber-900/60 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl shadow-md mb-6 text-center border border-yellow-300 dark:border-yellow-700 w-full"
+              title={champion}
+            >
               {champion}
             </div>
-            <div className="w-full h-44 bg-gradient-to-t from-yellow-500 to-yellow-400 dark:from-yellow-700 dark:to-yellow-600 rounded-t-2xl flex justify-center pt-4 border-t-4 border-yellow-300 shadow-xl relative overflow-hidden">
+            <div className="w-full h-44 bg-gradient-to-t from-yellow-500 to-yellow-400 dark:from-yellow-700 dark:to-yellow-600 rounded-t-2xl flex justify-center pt-4 border-t-4 border-yellow-300 shadow-xl relative">
               <span className="text-6xl font-black text-yellow-600/30 dark:text-yellow-400/20">1</span>
               <Trophy className="text-yellow-300 absolute -top-6 drop-shadow-lg" size={40} />
             </div>
@@ -453,7 +498,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           {thirdPlace && (
             <div className="flex flex-col items-center w-1/3 min-w-0 max-w-[220px]">
               <div
-                className="text-sm font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-md mb-2 text-center truncate w-full border border-gray-200 dark:border-gray-700"
+                className="text-[11px] sm:text-sm leading-tight line-clamp-2 break-words font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-2 sm:px-3 py-1.5 rounded-2xl shadow-md mb-6 text-center w-full border border-gray-200 dark:border-gray-700"
                 title={thirdPlace}
               >
                 {thirdPlace}
@@ -469,7 +514,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
 
       {/* ─── Liquipedia Canvas ─── */}
       <div
-        className="w-full bg-white dark:bg-gray-950 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[650px] relative shadow-sm touch-none select-none"
+        className="w-full bg-white dark:bg-gray-950 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 min-h-[460px] sm:min-h-[650px] relative shadow-sm touch-none select-none"
         style={{ touchAction: 'none' }}
       >
         <TransformWrapper
@@ -486,17 +531,10 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
           pinch={{ step: 5, allowPanning: true }}
           panning={{ velocityDisabled: true }}
           onInit={(ref) => {
-            if (matches.length > 8 && typeof window !== 'undefined') {
+            transformRef.current = ref;
+            if (typeof window !== 'undefined') {
               requestAnimationFrame(() => {
-                const wrapperEl = ref.instance.wrapperComponent;
-                const contentEl = ref.instance.contentComponent;
-                if (wrapperEl && contentEl && contentEl.scrollWidth > 0 && contentEl.scrollHeight > 0) {
-                  const fitScale = Math.min(
-                    wrapperEl.clientWidth / contentEl.scrollWidth,
-                    wrapperEl.clientHeight / contentEl.scrollHeight
-                  ) * 0.9;
-                  ref.centerView(Math.max(0.15, Math.min(1, fitScale)));
-                }
+                requestAnimationFrame(() => fitCanvas(ref));
               });
             }
           }}
@@ -534,8 +572,8 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                 </button>
               </div>
               
-              <TransformComponent wrapperClass="w-full h-full cursor-grab active:cursor-grabbing !w-full touch-none" contentClass="p-12 !w-max !max-w-none">
-                <div className="flex gap-16 min-h-[600px] items-start w-max">
+              <TransformComponent wrapperClass="w-full h-full cursor-grab active:cursor-grabbing !w-full touch-none" contentClass="p-6 sm:p-12 !w-max !max-w-none">
+                <div className="flex gap-16 min-h-[400px] sm:min-h-[600px] items-start w-max">
                   
                   {/* Left Column: Upper & Lower Bracket Stacks (Liquipedia Format) */}
                   <div className="flex flex-col gap-16">
@@ -544,7 +582,7 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                     {(viewMode === 'all' || viewMode === 'winners') && upperRoundNums.length > 0 && (
                       <div className="space-y-6">
                         <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-800 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                          <Trophy size={16} /> {hasDoubleElim ? 'Upper Bracket (Double Elimination)' : 'Championship Bracket'}
+                          <Trophy size={16} /> {resolvedChaosMode ? 'Chaos Roulette Rounds' : hasDoubleElim ? 'Upper Bracket (Double Elimination)' : 'Championship Bracket'}
                         </div>
 
                         <div className="flex items-stretch">
@@ -566,10 +604,21 @@ export function BracketTree({ matches, onMatchClick }: BracketTreeProps) {
                                 </div>
 
                                 {hasNext && nextRoundMatches && (
-                                  <RoundConnector
-                                    currentCount={roundMatches.length}
-                                    nextCount={nextRoundMatches.length}
-                                  />
+                                  resolvedChaosMode ? (
+                                    <div
+                                      className="flex flex-col items-center justify-center w-10 sm:w-12 shrink-0 select-none pointer-events-none text-teal-500/60"
+                                      title="Partners reshuffled each round"
+                                    >
+                                      <div className="w-8 h-8 rounded-full bg-teal-500/10 border border-teal-500/20 flex items-center justify-center">
+                                        <Shuffle size={15} />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <RoundConnector
+                                      currentCount={roundMatches.length}
+                                      nextCount={nextRoundMatches.length}
+                                    />
+                                  )
                                 )}
                               </React.Fragment>
                             );

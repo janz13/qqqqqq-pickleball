@@ -13,6 +13,7 @@ import { useEffect, useState, useRef } from 'react';
 import { buildNextBatches, priorityOrder } from '@/engine/queue-engine';
 import { pairFour } from '@/engine/pairing-engine';
 import { getInitials } from '@/utils/initials';
+import { getSortedPlayers } from '@/utils/leaderboard';
 
 interface CloudSessionState {
   session: Session | null;
@@ -1176,32 +1177,48 @@ export default function PlayerMonitorPage() {
               <TournamentLeaderboard tournamentState={session.tournamentState} players={players} sessionType={session.sessionType} />
             ) : (() => {
               const isChaos = session?.sessionType === 'TOURNAMENT_CHAOS';
-              const playerStats = players.map(p => {
-                let wins = p.sessionWins;
-                let losses = p.sessionLosses;
-                let gamesPlayed = p.sessionGamesPlayed;
-                if (isChaos && session?.tournamentState?.matches) {
-                  wins = 0;
-                  losses = 0;
-                  session.tournamentState.matches.forEach(m => {
-                    if (m.status === 'COMPLETED' || m.winnerTeamId) {
-                      const pairA = session.tournamentState!.pairs.find(pair => pair.id === m.teamAId);
-                      const pairB = session.tournamentState!.pairs.find(pair => pair.id === m.teamBId);
-                      const inA = pairA ? (pairA.player1Id === p.id || pairA.player2Id === p.id) : false;
-                      const inB = pairB ? (pairB.player1Id === p.id || pairB.player2Id === p.id) : false;
-                      if (inA) {
-                        if (m.winnerTeamId === m.teamAId) wins++; else losses++;
-                      } else if (inB) {
-                        if (m.winnerTeamId === m.teamBId) wins++; else losses++;
+              const rankedPlayers = isChaos
+                ? players
+                    .map(p => {
+                      let wins = 0;
+                      let losses = 0;
+                      if (session?.tournamentState?.matches) {
+                        session.tournamentState.matches.forEach(m => {
+                          if (m.status === 'COMPLETED' || m.winnerTeamId) {
+                            const pairA = session.tournamentState!.pairs.find(pair => pair.id === m.teamAId);
+                            const pairB = session.tournamentState!.pairs.find(pair => pair.id === m.teamBId);
+                            const inA = pairA ? (pairA.player1Id === p.id || pairA.player2Id === p.id) : false;
+                            const inB = pairB ? (pairB.player1Id === p.id || pairB.player2Id === p.id) : false;
+                            if (inA) {
+                              if (m.winnerTeamId === m.teamAId) wins++; else losses++;
+                            } else if (inB) {
+                              if (m.winnerTeamId === m.teamBId) wins++; else losses++;
+                            }
+                          }
+                        });
                       }
-                    }
-                  });
-                  gamesPlayed = wins + losses;
-                }
-                return { ...p, wins, losses, gamesPlayed };
-              }).filter(p => p.gamesPlayed > 0);
+                      const gamesPlayed = wins + losses;
+                      return { ...p, wins, losses, gamesPlayed };
+                    })
+                    .filter(p => p.gamesPlayed > 0)
+                    .sort((a, b) => {
+                      if (b.wins !== a.wins) return b.wins - a.wins;
+                      const winPctA = a.wins / a.gamesPlayed;
+                      const winPctB = b.wins / b.gamesPlayed;
+                      if (winPctB !== winPctA) return winPctB - winPctA;
+                      if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
+                      return a.name.localeCompare(b.name);
+                    })
+                : getSortedPlayers(players, matches)
+                    .filter(p => p.sessionGamesPlayed > 0)
+                    .map(p => ({
+                      ...p,
+                      wins: p.sessionWins,
+                      losses: p.sessionLosses,
+                      gamesPlayed: p.sessionGamesPlayed,
+                    }));
 
-              if (playerStats.length === 0) {
+              if (rankedPlayers.length === 0) {
                 return (
                   <div className="flex flex-col items-center justify-center h-64 text-slate-500">
                     <Trophy size={48} className="mb-4 opacity-20" />
@@ -1212,15 +1229,7 @@ export default function PlayerMonitorPage() {
 
               return (
                 <div className="space-y-4">
-                  {[...playerStats]
-                    .sort((a, b) => {
-                      if (b.wins !== a.wins) return b.wins - a.wins;
-                      const winPctA = a.wins / a.gamesPlayed;
-                      const winPctB = b.wins / b.gamesPlayed;
-                      if (winPctB !== winPctA) return winPctB - winPctA;
-                      return b.gamesPlayed - a.gamesPlayed;
-                    })
-                    .map((player, idx) => {
+                  {rankedPlayers.map((player, idx) => {
                       const winPct = ((player.wins / player.gamesPlayed) * 100).toFixed(0);
                       return (
                         <div key={player.id} className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
@@ -1361,10 +1370,52 @@ export default function PlayerMonitorPage() {
                 </div>
               )}
 
-              {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (
-                <div className="pb-4 h-full min-h-[600px]">
-                  <BracketTree 
-                    matches={session.tournamentState.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
+              {(session.tournamentState.phase === 'BRACKET' || session.tournamentState.phase === 'COMPLETED') && (() => {
+                const isChaosSession = session.sessionType === 'TOURNAMENT_CHAOS';
+                const isChaosCompleted = isChaosSession && session.tournamentState!.phase === 'COMPLETED';
+                let chaosChampionName = 'Tournament Winner';
+                const chaosMaxRound = Math.max(1, ...session.tournamentState!.matches.map(m => m.round));
+
+                if (isChaosCompleted) {
+                  const latestChaosMatch = [...session.tournamentState!.matches]
+                    .filter(m => m.id.startsWith('chaos_') && (m.status === 'COMPLETED' || m.winnerTeamId))
+                    .sort((a, b) => (b.round - a.round) || (b.matchNumber - a.matchNumber))[0];
+                  const winPair = latestChaosMatch?.winnerTeamId
+                    ? session.tournamentState!.pairs.find(p => p.id === latestChaosMatch.winnerTeamId)
+                    : undefined;
+                  if (winPair) {
+                    chaosChampionName = winPair.name || [
+                      players.find(p => p.id === winPair.player1Id)?.name,
+                      players.find(p => p.id === winPair.player2Id)?.name,
+                    ].filter(Boolean).join(' & ') || 'Tournament Winner';
+                  }
+                }
+
+                return (
+                <div className="pb-4 space-y-6">
+                  {isChaosCompleted && (
+                    <div className="glass-dark bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border-2 border-amber-500/40 rounded-3xl p-6 text-center shadow-xl space-y-3 animate-slide-up">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-inner">
+                        <Trophy size={30} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-widest text-amber-400 inline-flex items-center gap-1.5">
+                          <Trophy size={13} /> Chaos Roulette Champion
+                        </span>
+                        <h3 className="text-2xl sm:text-3xl font-black text-white mt-1">
+                          {chaosChampionName}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-300 font-medium mt-1">
+                          Survived all {chaosMaxRound} rounds and conquered the roulette wheel!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <BracketTree
+                    hidePodium={isChaosCompleted}
+                    isChaosMode={isChaosSession}
+                    matches={session.tournamentState!.matches.filter(m => !m.id.startsWith('pool_match_')).map(m => {
                       const getTeamName = (teamId: string | null) => {
                         if (!teamId) return null;
                         const pair = session.tournamentState!.pairs.find(p => p.id === teamId);
@@ -1396,7 +1447,8 @@ export default function PlayerMonitorPage() {
                     })}
                   />
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </main>
@@ -1432,18 +1484,27 @@ export default function PlayerMonitorPage() {
 
       {/* Organizer Announcement Toast */}
       {activeAnnouncement && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 animate-slide-up w-[90%] max-w-md">
-          <div className="bg-indigo-600 text-white p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center gap-4 border border-indigo-400/50 relative">
-            <button onClick={() => setActiveAnnouncement(null)} className="absolute top-4 right-4 text-indigo-200 hover:text-white">
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed ${activeNotification ? 'top-24' : 'bottom-5'} left-1/2 -translate-x-1/2 z-50 animate-slide-up w-[92%] max-w-md`}
+        >
+          <div className="bg-indigo-600/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl flex items-start gap-3 border border-indigo-400/50 relative">
+            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+              <Megaphone size={20} className="animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0 pr-6">
+              <h3 className="text-xs font-black uppercase tracking-wider text-indigo-100 mb-0.5">Announcement</h3>
+              <p className="font-semibold text-sm sm:text-base leading-snug break-words">{activeAnnouncement.text}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveAnnouncement(null)}
+              aria-label="Dismiss announcement"
+              className="p-1 rounded-lg text-indigo-200 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+            >
               &times;
             </button>
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-              <Megaphone size={24} className="animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-xl font-black mb-1">Announcement</h3>
-              <p className="font-medium text-lg leading-relaxed">{activeAnnouncement.text}</p>
-            </div>
           </div>
         </div>
       )}

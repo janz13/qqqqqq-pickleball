@@ -950,6 +950,12 @@ export default function TournamentPanel() {
     </div>
   );
 
+  const chaosR1MatchesCount = matches.filter(m => m.round === 1).length;
+  const displayTeamCount =
+    session?.sessionType === SessionType.TOURNAMENT_CHAOS && chaosR1MatchesCount > 0
+      ? chaosR1MatchesCount * 2
+      : pairs.length;
+
   return (
     <div className="flex flex-col gap-6 p-6 h-full overflow-y-auto text-gray-900 dark:text-gray-100 max-w-7xl mx-auto w-full">
       {/* ─── Header ─── */}
@@ -966,7 +972,7 @@ export default function TournamentPanel() {
             <span>{modeLabel}</span>
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 font-medium tabular-nums">
-            {pairs.length} teams • {matches.length} total matches
+            {displayTeamCount} teams • {matches.length} total matches
           </p>
         </div>
         <div className="flex items-center gap-3">

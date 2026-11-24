@@ -124,7 +124,7 @@ export function rankTournament(
       pointsScored: 0,
       pointDiff: 0,
       detail: `${item.matchesWon}W (${item.roundsSurvived > 0 ? `Round ${item.roundsSurvived}` : 'Round 1'})`,
-      subDetail: `${item.matchesPlayed} Matches`,
+      subDetail: `${item.matchesPlayed} ${item.matchesPlayed === 1 ? 'Match' : 'Matches'}`,
       isPlayer: true,
       player: item.player,
     }));

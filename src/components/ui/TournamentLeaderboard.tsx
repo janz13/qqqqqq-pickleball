@@ -221,7 +221,7 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
                     top3[1].initials
                   )}
                 </div>
-                <div className="font-bold text-center text-xs sm:text-sm truncate w-full text-gray-900 dark:text-gray-100">
+                <div className="font-bold text-center text-xs sm:text-sm leading-tight line-clamp-2 break-words w-full text-gray-900 dark:text-gray-100">
                   {top3[1].name}
                 </div>
                 <div className="text-[11px] sm:text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400 w-full text-center leading-tight line-clamp-2">
@@ -246,7 +246,7 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
                     top3[0].initials
                   )}
                 </div>
-                <div className="font-black text-center text-sm sm:text-base truncate w-full text-gray-900 dark:text-gray-100">
+                <div className="font-black text-center text-xs sm:text-base leading-tight line-clamp-2 break-words w-full text-gray-900 dark:text-gray-100">
                   {top3[0].name}
                 </div>
                 <div className="text-xs sm:text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400 w-full text-center leading-tight line-clamp-2">
@@ -271,7 +271,7 @@ export function TournamentLeaderboard({ tournamentState, players, sessionType }:
                     top3[2].initials
                   )}
                 </div>
-                <div className="font-bold text-center text-xs sm:text-sm truncate w-full text-gray-900 dark:text-gray-100">
+                <div className="font-bold text-center text-xs sm:text-sm leading-tight line-clamp-2 break-words w-full text-gray-900 dark:text-gray-100">
                   {top3[2].name}
                 </div>
                 <div className="text-[11px] sm:text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400 w-full text-center leading-tight line-clamp-2">

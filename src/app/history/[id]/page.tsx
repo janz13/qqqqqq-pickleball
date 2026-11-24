@@ -142,8 +142,10 @@ export default function HistoryPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+      <div className={isPlayerView ? 'dark' : undefined}>
+        <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+        </div>
       </div>
     );
   }
@@ -326,7 +328,8 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-4 md:p-8">
+    <div className={isPlayerView ? 'dark' : undefined}>
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-slate-100 p-4 md:p-8">
       {isPlayerView && (
         <div className="bg-emerald-600 dark:bg-emerald-500/20 text-white dark:text-emerald-100 py-3 px-4 flex items-center justify-center gap-2 border-b border-emerald-700 dark:border-emerald-500/30 rounded-t-xl mb-2">
           <CheckCircle size={18} />
@@ -380,7 +383,7 @@ export default function HistoryPage() {
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-slate-400 to-slate-500 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden">
                       {top3[1].photoUrl ? <img src={top3[1].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[1].name)}
                     </div>
-                    <div className="font-bold text-center text-sm truncate w-full">{top3[1].name}</div>
+                    <div className="font-bold text-center text-xs sm:text-sm leading-tight line-clamp-2 break-words w-full">{top3[1].name}</div>
                   </div>
                   <div className="w-full h-20 bg-gradient-to-t from-slate-300 to-slate-200 dark:from-slate-700 dark:to-slate-600 flex justify-center pt-2">
                     <span className="text-2xl font-black text-slate-500/50 tabular-nums">2</span>
@@ -395,7 +398,7 @@ export default function HistoryPage() {
                     <div className="w-12 h-12 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white flex items-center justify-center font-bold text-base shadow-lg mb-2 ring-4 ring-amber-400/20 overflow-hidden">
                       {top3[0].photoUrl ? <img src={top3[0].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[0].name)}
                     </div>
-                    <div className="font-bold text-center text-base truncate w-full">{top3[0].name}</div>
+                    <div className="font-bold text-center text-xs sm:text-base leading-tight line-clamp-2 break-words w-full">{top3[0].name}</div>
                   </div>
                   <div className="w-full h-28 bg-gradient-to-t from-amber-400 to-yellow-300 dark:from-amber-600 dark:to-amber-500 flex justify-center pt-2 shadow-inner">
                     <span className="text-3xl font-black text-amber-600/50 dark:text-amber-900/30 tabular-nums">1</span>
@@ -410,7 +413,7 @@ export default function HistoryPage() {
                     <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-700 text-white flex items-center justify-center font-bold text-sm shadow-md mb-2 ring-1 ring-black/10 dark:ring-white/10 overflow-hidden">
                       {top3[2].photoUrl ? <img src={top3[2].photoUrl} alt="Avatar" className="w-full h-full object-cover" /> : getInitials(top3[2].name)}
                     </div>
-                    <div className="font-bold text-center text-sm truncate w-full">{top3[2].name}</div>
+                    <div className="font-bold text-center text-xs sm:text-sm leading-tight line-clamp-2 break-words w-full">{top3[2].name}</div>
                   </div>
                   <div className="w-full h-16 bg-gradient-to-t from-orange-300 to-orange-200 dark:from-orange-900/60 dark:to-orange-800/60 flex justify-center pt-2">
                     <span className="text-2xl font-black text-orange-800/30 tabular-nums">3</span>
@@ -433,8 +436,12 @@ export default function HistoryPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">Final bracket progression and results</p>
               </div>
             </div>
-            <div className="min-h-[550px] w-full">
-              <BracketTree matches={mappedBracketMatches} />
+            <div className="min-h-[460px] sm:min-h-[550px] w-full">
+              <BracketTree
+                matches={mappedBracketMatches}
+                hidePodium={true}
+                isChaosMode={historyItem.session.sessionType === 'TOURNAMENT_CHAOS'}
+              />
             </div>
           </div>
         )}
@@ -455,7 +462,7 @@ export default function HistoryPage() {
                   {showGamesBreakdown ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 tabular-nums">
-                  {totalMatches} matches recorded across {historyItem.courts.length} courts
+                  {totalMatches} {totalMatches === 1 ? 'match' : 'matches'} recorded across {historyItem.courts.length} courts
                 </p>
               </div>
             </div>
@@ -641,7 +648,7 @@ export default function HistoryPage() {
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Most Active Player</div>
-              <div className="text-xl font-bold">{mostActivePlayer?.name || 'N/A'} <span className="text-sm font-normal text-gray-500 tabular-nums">({mostActiveGames} games)</span></div>
+              <div className="text-xl font-bold">{mostActivePlayer?.name || 'N/A'} <span className="text-sm font-normal text-gray-500 tabular-nums">({mostActiveGames} {mostActiveGames === 1 ? 'game' : 'games'})</span></div>
             </div>
           </div>
         </div>
@@ -654,24 +661,24 @@ export default function HistoryPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 font-medium">
                 <tr>
-                  <th className="px-6 py-4">Rank</th>
-                  <th className="px-6 py-4">Player</th>
-                  <th className="px-6 py-4 text-center">W - L</th>
-                  <th className="px-6 py-4 text-center">Win %</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">Rank</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4">Player</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-center whitespace-nowrap">W - L</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-center whitespace-nowrap">Win %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800 tabular-nums">
                 {finalRankings.map((rankedItem, idx: number) => {
                   return (
                     <tr key={rankedItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                      <td className="px-6 py-4 font-bold text-gray-400">#{idx + 1}</td>
-                      <td className="px-6 py-4 font-bold">{rankedItem.name}</td>
-                      <td className="px-6 py-4 text-center font-medium">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 font-bold text-gray-400 whitespace-nowrap">#{idx + 1}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 font-bold whitespace-nowrap">{rankedItem.name}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-center font-medium whitespace-nowrap">
                         <span className="text-emerald-600 dark:text-emerald-400">{rankedItem.wins}</span>
                         <span className="text-gray-400 mx-1">-</span>
                         <span className="text-rose-600 dark:text-rose-400">{rankedItem.losses}</span>
                       </td>
-                      <td className="px-6 py-4 text-center font-bold">{rankedItem.winPct}%</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-center font-bold whitespace-nowrap">{rankedItem.winPct}%</td>
                     </tr>
                   )
                 })}
@@ -703,6 +710,7 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

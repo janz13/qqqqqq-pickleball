@@ -58,6 +58,9 @@ export function getSortedPlayers(players: Player[], matches: Match[]): Player[] 
     // 4. Harder opponents (highest avg opponent skill)
     const aAvgOppSkill = aStats.matchCount > 0 ? aStats.totalOpponentSkill / aStats.matchCount : 0;
     const bAvgOppSkill = bStats.matchCount > 0 ? bStats.totalOpponentSkill / bStats.matchCount : 0;
-    return bAvgOppSkill - aAvgOppSkill;
+    if (bAvgOppSkill !== aAvgOppSkill) return bAvgOppSkill - aAvgOppSkill;
+
+    // 5. Deterministic alphabetical tiebreak
+    return a.name.localeCompare(b.name);
   });
 }

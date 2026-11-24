@@ -120,6 +120,42 @@ export function buildNextBatches(
     let chosenFour = top4;
     let bestTotal = Infinity;
 
+    const courtsLeft = openCourtCount - courtIdx;
+    const remCourts = courtsLeft - 1;
+    let urgentIds = new Set<string>();
+    const urgentHighIds = new Set<string>();
+    const urgentLowIds = new Set<string>();
+    let isUrgentFeasible = false;
+
+    if (matchingMode === 'balanced' && remCourts > 0 && sorted.length > 0) {
+      const minGP = sorted[0].sessionGamesPlayed;
+      const urgentPool = remainingPool.filter(
+        (p) => (p.isLatecomer && !p.hasCaughtUp) || p.sessionGamesPlayed === minGP
+      );
+      urgentIds = new Set(urgentPool.map((p) => p.id));
+      const poolMap = new Map(urgentPool.map((p) => [p.id, p]));
+
+      for (const p of urgentPool) {
+        const partner =
+          p.lockedPartnerId != null && urgentIds.has(p.lockedPartnerId)
+            ? poolMap.get(p.lockedPartnerId)
+            : undefined;
+        const isLockedCrossTier =
+          partner != null &&
+          ((p.skillLevel >= 4 && partner.skillLevel <= 2) ||
+            (p.skillLevel <= 2 && partner.skillLevel >= 4));
+        if (isLockedCrossTier) continue;
+
+        if (p.skillLevel >= 4) urgentHighIds.add(p.id);
+        else if (p.skillLevel <= 2) urgentLowIds.add(p.id);
+      }
+
+      isUrgentFeasible =
+        urgentPool.length > 0 &&
+        urgentPool.length <= courtsLeft * 4 &&
+        Math.ceil(urgentHighIds.size / 4) + Math.ceil(urgentLowIds.size / 4) <= courtsLeft;
+    }
+
     for (const four of combos) {
       const match = pairFour(four);
       const varietyScore = scoreMatch(match);
@@ -148,6 +184,29 @@ export function buildNextBatches(
       let queuePositionPenalty = 0;
       for (const p of four) {
         queuePositionPenalty += sorted.findIndex((sp) => sp.id === p.id);
+      }
+
+      let lookaheadPenalty = 0;
+      if (isUrgentFeasible) {
+        let usedUrgent = 0;
+        let usedHigh = 0;
+        let usedLow = 0;
+        for (const p of four) {
+          if (urgentIds.has(p.id)) usedUrgent++;
+          if (urgentHighIds.has(p.id)) usedHigh++;
+          if (urgentLowIds.has(p.id)) usedLow++;
+        }
+        const remUrgent = urgentIds.size - usedUrgent;
+        const remHigh = urgentHighIds.size - usedHigh;
+        const remLow = urgentLowIds.size - usedLow;
+        const remSeats = remCourts * 4;
+
+        if (remUrgent > remSeats) {
+          lookaheadPenalty += (remUrgent - remSeats) * 80000;
+        }
+        if (Math.ceil(remHigh / 4) + Math.ceil(remLow / 4) > remCourts) {
+          lookaheadPenalty += 80000;
+        }
       }
 
       let competitivePenalty = 0;
@@ -199,7 +258,7 @@ export function buildNextBatches(
         competitivePenalty += Math.min(winners, losers) * 400;
       }
 
-      const total = varietyScore + skipPenalty + queuePositionPenalty + competitivePenalty;
+      const total = varietyScore + skipPenalty + queuePositionPenalty + competitivePenalty + lookaheadPenalty;
       if (total < bestTotal) {
         bestTotal = total;
         chosenFour = four;

@@ -319,7 +319,7 @@ export default function TVDisplayPage() {
 
           {isTournament && tournamentState ? (
             <div className="w-full bg-slate-900/70 border border-slate-800 rounded-3xl p-6">
-              <TournamentLeaderboard tournamentState={tournamentState} players={players} />
+              <TournamentLeaderboard tournamentState={tournamentState} players={players} sessionType={session.sessionType} />
             </div>
           ) : (
             <div className="w-full bg-slate-900/70 border border-slate-800 rounded-3xl p-6 space-y-4">
@@ -363,7 +363,7 @@ export default function TVDisplayPage() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-5 rounded-3xl shadow-2xl border border-emerald-400/50 flex items-center gap-4 animate-fade-in"
+          className="fixed top-24 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 sm:p-5 rounded-3xl shadow-2xl border border-emerald-400/50 flex items-center gap-4 animate-fade-in"
         >
           <div className="p-3 bg-white/15 rounded-2xl shrink-0">
             <Megaphone size={28} />
@@ -406,11 +406,18 @@ export default function TVDisplayPage() {
               <span className="text-slate-400 tabular-nums">
                 {courts.filter(c => c.status === CourtStatus.IN_PROGRESS).length} / {courts.length} Courts Active
               </span>
-              {isTournament && tournamentState && (
-                <span className="text-slate-400 hidden sm:inline tabular-nums">
-                  {tournamentState.pairs.length} Teams • {tournamentState.matches.filter(m => m.status === 'COMPLETED').length} / {tournamentState.matches.length} Matches Done
-                </span>
-              )}
+              {isTournament && tournamentState && (() => {
+                const chaosR1Count = tournamentState.matches.filter(m => m.round === 1).length;
+                const displayTeamCount =
+                  session.sessionType === SessionType.TOURNAMENT_CHAOS && chaosR1Count > 0
+                    ? chaosR1Count * 2
+                    : tournamentState.pairs.length;
+                return (
+                  <span className="text-slate-400 hidden sm:inline tabular-nums">
+                    {displayTeamCount} Teams • {tournamentState.matches.filter(m => m.status === 'COMPLETED').length} / {tournamentState.matches.length} Matches Done
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -441,7 +448,7 @@ export default function TVDisplayPage() {
                         Ranked by Wins & Point Diff
                       </span>
                     </div>
-                    <TournamentLeaderboard tournamentState={tournamentState} players={players} />
+                    <TournamentLeaderboard tournamentState={tournamentState} players={players} sessionType={session.sessionType} />
                   </div>
                 )}
 
@@ -556,7 +563,10 @@ export default function TVDisplayPage() {
                   </div>
                 </div>
                 <div className="flex-1 bg-slate-900/60 rounded-3xl border border-slate-800 p-4 overflow-hidden">
-                  <BracketTree matches={mappedBracketMatches} />
+                  <BracketTree
+                    matches={mappedBracketMatches}
+                    isChaosMode={session.sessionType === SessionType.TOURNAMENT_CHAOS}
+                  />
                 </div>
               </div>
             )}
@@ -572,12 +582,12 @@ export default function TVDisplayPage() {
                     </div>
                   </div>
                   <div className="text-xs font-black uppercase tracking-widest text-amber-400 mb-1">
-                    Tournament Champions
+                    {session.sessionType === SessionType.TOURNAMENT_CHAOS ? 'Chaos Roulette Champion' : 'Tournament Champions'}
                   </div>
                   <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-md">
                     {championName || 'Champion'}
                   </h2>
-                  {championPlayers.length > 0 && (
+                  {championPlayers.length > 0 && championPlayers.join(' & ') !== championName && (
                     <p className="text-lg font-bold text-amber-200/90 mt-2">
                       {championPlayers.join(' & ')}
                     </p>
@@ -590,7 +600,7 @@ export default function TVDisplayPage() {
                     <h3 className="text-lg font-black text-slate-300 uppercase tracking-wider mb-2 text-center">
                       Final Podium
                     </h3>
-                    <TournamentLeaderboard tournamentState={tournamentState} players={players} />
+                    <TournamentLeaderboard tournamentState={tournamentState} players={players} sessionType={session.sessionType} />
                   </div>
                 )}
 
@@ -599,7 +609,11 @@ export default function TVDisplayPage() {
                   <h3 className="text-lg font-black text-slate-300 uppercase tracking-wider mb-4 px-2">
                     Final Tournament Bracket
                   </h3>
-                  <BracketTree matches={mappedBracketMatches} />
+                  <BracketTree
+                    matches={mappedBracketMatches}
+                    hidePodium={true}
+                    isChaosMode={session.sessionType === SessionType.TOURNAMENT_CHAOS}
+                  />
                 </div>
               </div>
             )}

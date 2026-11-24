@@ -2,6 +2,10 @@ import { clampScore, getScoreAdvisory } from '@/components/ui/QuickScoreChips';
 import { getInitials } from '@/utils/initials';
 import { aggregateCloudRosterRows, useStore } from '@/lib/store';
 import { createPlayer, CourtStatus, PlayerStatus, SessionType, Team } from '@/types/models';
+import { buildNextBatches } from '@/engine/queue-engine';
+import { pairFour } from '@/engine/pairing-engine';
+import { getSortedPlayers } from '@/utils/leaderboard';
+import { rankTournament } from '@/utils/tournamentRanking';
 
 const mockHeaderMap = new Map<string, string>([['x-forwarded-for', '198.51.100.42']]);
 const mockCookieStore = {
@@ -279,5 +283,136 @@ describe('Security, Hydration & Audit Regression Fixes', () => {
     expect(getInitials('Alice & Bob')).toBe('AB');
     expect(getInitials('Alex')).toBe('AL');
     expect(getInitials('   ')).toBe('?');
+  });
+
+  it('schedules all 32 mixed-skill Open Play Balanced players with zero Wave 1/Wave 2 overlap across 4 courts', () => {
+    let roster = Array.from({ length: 32 }, (_, idx) =>
+      createPlayer({
+        id: `opb_${idx + 1}`,
+        name: `OPB ${String(idx + 1).padStart(2, '0')}`,
+        skillLevel: (idx % 5) + 1,
+        queuedAtEpochMs: 1000 + idx * 10,
+      })
+    );
+
+    const wave1 = buildNextBatches(roster, 4, 'balanced');
+    expect(wave1).toHaveLength(4);
+    const wave1Ids = new Set(wave1.flatMap((batch) => batch.map((p) => p.id)));
+    expect(wave1Ids.size).toBe(16);
+
+    for (const batch of wave1) {
+      const m = pairFour(batch);
+      const teamAHigh = m.teamA.some((p) => p.skillLevel >= 4);
+      const teamALow = m.teamA.some((p) => p.skillLevel <= 2);
+      const teamBHigh = m.teamB.some((p) => p.skillLevel >= 4);
+      const teamBLow = m.teamB.some((p) => p.skillLevel <= 2);
+      expect(teamAHigh && (teamALow || teamBLow)).toBe(false);
+      expect(teamBHigh && (teamALow || teamBLow)).toBe(false);
+      const skillA = m.teamA.reduce((sum, p) => sum + p.skillLevel, 0);
+      const skillB = m.teamB.reduce((sum, p) => sum + p.skillLevel, 0);
+      expect(Math.abs(skillA - skillB)).toBeLessThanOrEqual(1);
+    }
+
+    roster = roster.map((p, idx) =>
+      wave1Ids.has(p.id)
+        ? {
+            ...p,
+            sessionGamesPlayed: 1,
+            consecutiveSitOuts: 0,
+            queuedAtEpochMs: 5000 + idx * 10,
+          }
+        : {
+            ...p,
+            consecutiveSitOuts: 1,
+          }
+    );
+
+    const wave2 = buildNextBatches(roster, 4, 'balanced');
+    expect(wave2).toHaveLength(4);
+    const wave2Ids = new Set(wave2.flatMap((batch) => batch.map((p) => p.id)));
+    expect(wave2Ids.size).toBe(16);
+
+    const overlap = Array.from(wave2Ids).filter((id) => wave1Ids.has(id));
+    expect(overlap).toEqual([]);
+
+    for (const batch of wave2) {
+      const m = pairFour(batch);
+      const teamAHigh = m.teamA.some((p) => p.skillLevel >= 4);
+      const teamALow = m.teamA.some((p) => p.skillLevel <= 2);
+      const teamBHigh = m.teamB.some((p) => p.skillLevel >= 4);
+      const teamBLow = m.teamB.some((p) => p.skillLevel <= 2);
+      expect(teamAHigh && (teamALow || teamBLow)).toBe(false);
+      expect(teamBHigh && (teamALow || teamBLow)).toBe(false);
+      const skillA = m.teamA.reduce((sum, p) => sum + p.skillLevel, 0);
+      const skillB = m.teamB.reduce((sum, p) => sum + p.skillLevel, 0);
+      expect(Math.abs(skillA - skillB)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('pluralizes Chaos Roulette rankTournament match counts and tie-breaks getSortedPlayers deterministically', () => {
+    const zoe = createPlayer({ id: 'p_z', name: 'Zoe', skillLevel: 3, sessionWins: 1, sessionGamesPlayed: 1 });
+    const amy = createPlayer({ id: 'p_a', name: 'Amy', skillLevel: 3, sessionWins: 1, sessionGamesPlayed: 1 });
+    const bob = createPlayer({ id: 'p_b', name: 'Bob', skillLevel: 3, sessionWins: 0, sessionGamesPlayed: 1 });
+    const dan = createPlayer({ id: 'p_d', name: 'Dan', skillLevel: 3, sessionWins: 0, sessionGamesPlayed: 1 });
+
+    expect(getSortedPlayers([zoe, amy], []).map((p) => p.name)).toEqual(['Amy', 'Zoe']);
+
+    const ranked = rankTournament(
+      {
+        phase: 'BRACKET',
+        pairs: [
+          { id: 't1', player1Id: 'p_z', player2Id: 'p_a', seed: 1, poolPlayWins: 0, poolPlayPointDiff: 0, poolPlayPointsScored: 0 },
+          { id: 't2', player1Id: 'p_b', player2Id: 'p_d', seed: 2, poolPlayWins: 0, poolPlayPointDiff: 0, poolPlayPointsScored: 0 },
+          { id: 't3', player1Id: 'p_z', player2Id: 'p_a', seed: 3, poolPlayWins: 0, poolPlayPointDiff: 0, poolPlayPointsScored: 0 },
+        ],
+        matches: [
+          {
+            id: 'chaos_1',
+            round: 1,
+            isLosersBracket: false,
+            matchNumber: 1,
+            nextMatchId: null,
+            nextLoserMatchId: null,
+            teamAId: 't1',
+            teamBId: 't2',
+            courtId: null,
+            winnerTeamId: 't1',
+            status: 'COMPLETED',
+            scoreA: 11,
+            scoreB: 5,
+            isBestOf3: false,
+            games: [],
+            startedAtEpochMs: 1000,
+            endedAtEpochMs: 2000,
+          },
+          {
+            id: 'chaos_2',
+            round: 2,
+            isLosersBracket: false,
+            matchNumber: 2,
+            nextMatchId: null,
+            nextLoserMatchId: null,
+            teamAId: 't3',
+            teamBId: 't1',
+            courtId: null,
+            winnerTeamId: 't3',
+            status: 'COMPLETED',
+            scoreA: 11,
+            scoreB: 7,
+            isBestOf3: false,
+            games: [],
+            startedAtEpochMs: 3000,
+            endedAtEpochMs: 4000,
+          },
+        ],
+      },
+      [zoe, amy, bob, dan],
+      SessionType.TOURNAMENT_CHAOS
+    );
+
+    const bobItem = ranked.find((r) => r.id === 'p_b')!;
+    const amyItem = ranked.find((r) => r.id === 'p_a')!;
+    expect(bobItem.subDetail).toBe('1 Match');
+    expect(amyItem.subDetail).toBe('2 Matches');
   });
 });
